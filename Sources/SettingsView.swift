@@ -93,6 +93,13 @@ struct GeneralSettingsView: View {
                        isOn: $configStore.config.notifyTaskStart)
             }
 
+            Section("Feierabend") {
+                Toggle("Zuklappen/Standby = Feierabend",
+                       isOn: $configStore.config.endDayOnSleep)
+                Text("Sperren, Display-Aus oder Inaktivität gelten als Pause. Zuklappen bzw. Standby (System-Sleep) beendet den Arbeitstag automatisch.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Buchung") {
                 Picker("Zeiten runden auf", selection: $configStore.config.roundingMinutes) {
                     Text("Exakt").tag(0)

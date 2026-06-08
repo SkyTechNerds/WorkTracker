@@ -41,7 +41,7 @@ final class Tracker: ObservableObject {
 
     // Zustands-Signale
     private var screenLocked = false
-    private var systemAsleep = false
+    private var screenAsleep = false   // Display-Sleep = Pause (NICHT System-Sleep)
     private var currentlyActive = false
 
     // Session-/Tagesentscheidung fuer die Arbeitsbeginn-Nachfrage
@@ -119,17 +119,19 @@ final class Tracker: ObservableObject {
             Task { @MainActor in self?.setLocked(false) }
         }
         let wnc = NSWorkspace.shared.notificationCenter
+        // System-Sleep (Zuklappen/Standby) => Feierabend (oder Pause, wenn deaktiviert).
         wnc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.setAsleep(true) }
+            Task { @MainActor in self?.onSystemSleep() }
         }
         wnc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.setAsleep(false) }
+            Task { @MainActor in self?.onWake() }
         }
+        // Display-Sleep (Bildschirm aus) => Pause.
         wnc.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.setAsleep(true) }
+            Task { @MainActor in self?.setScreenAsleep(true) }
         }
         wnc.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.setAsleep(false) }
+            Task { @MainActor in self?.setScreenAsleep(false) }
         }
     }
 
@@ -141,12 +143,32 @@ final class Tracker: ObservableObject {
         evaluate(reason: v ? "lock" : "unlock")
     }
 
-    private func setAsleep(_ v: Bool) {
-        guard systemAsleep != v else { return }
-        systemAsleep = v
-        log(Event(ts: Date(), type: v ? .sleep : .wake))
+    /// Display-Sleep = Pause.
+    private func setScreenAsleep(_ v: Bool) {
+        guard screenAsleep != v else { return }
+        screenAsleep = v
+        log(Event(ts: Date(), type: v ? .sleep : .wake, reason: "display"))
         if v { sessionBoundary() }
         evaluate(reason: v ? "sleep" : "wake")
+    }
+
+    /// System-Sleep (Zuklappen/Standby): per Default Feierabend.
+    private func onSystemSleep() {
+        log(Event(ts: Date(), type: .sleep, reason: "standby"))
+        if config.endDayOnSleep {
+            manualEndDay()
+        } else {
+            screenAsleep = true
+            sessionBoundary()
+            evaluate(reason: "sleep")
+        }
+    }
+
+    /// Aufwachen aus System-Sleep.
+    private func onWake() {
+        log(Event(ts: Date(), type: .wake, reason: "standby"))
+        screenAsleep = false
+        evaluate(reason: "wake")
     }
 
     /// Sperre/Sleep beendet eine Session: Entscheidung zuruecksetzen, damit beim
@@ -185,7 +207,7 @@ final class Tracker: ObservableObject {
         }
         let threshold = TimeInterval(max(1, config.idleThresholdMinutes) * 60)
         let idle = idleSeconds()
-        let desired = !screenLocked && !systemAsleep && idle < threshold
+        let desired = !screenLocked && !screenAsleep && idle < threshold
 
         // Kein Zustandswechsel noetig.
         if desired == currentlyActive { return }
