@@ -245,7 +245,8 @@ final class Tracker: ObservableObject {
 
         if needConfirm {
             if !promptShowing { showStartPrompt(gapMinutes: gapMinutes) }
-            status = .paused
+            // Wartet auf Bestätigung – noch keine echte Pause: "Bereit" statt "Pause".
+            status = .off
             return
         }
 
