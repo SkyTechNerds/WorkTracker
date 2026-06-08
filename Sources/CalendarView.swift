@@ -48,6 +48,7 @@ struct CalendarView: View {
     @State private var assigningGroup: TicketGroupRef?
     @State private var aiRunning = false
     @State private var aiMessage: String?
+    @State private var timelineDragging = false
 
     private var dayStore: DayStore { tracker.dayStore }
     private var cal: Calendar {
@@ -65,8 +66,8 @@ struct CalendarView: View {
         .onAppear(perform: reload)
         .onChange(of: selectedDate) { _, _ in reload() }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-            // Live halten (Tail wächst), aber nicht während eines offenen Dialogs.
-            if editorTarget == nil && deletingBreak == nil && assigningGroup == nil {
+            // Live halten (Tail wächst), aber nicht während eines Dialogs/Drags.
+            if editorTarget == nil && deletingBreak == nil && assigningGroup == nil && !timelineDragging {
                 reload()
             }
         }
@@ -116,7 +117,9 @@ struct CalendarView: View {
                     segments: segments,
                     startHour: configStore.config.workdayStartHour,
                     endHour: configStore.config.workdayEndHour,
-                    onTap: { seg in editorTarget = .edit(seg) })
+                    onTap: { seg in editorTarget = .edit(seg) },
+                    onAdjust: { seg, s, e in adjustSegment(seg, start: s, end: e) },
+                    onDragging: { timelineDragging = $0 })
                 Divider()
                 ticketPanel.frame(width: 250)
             }
@@ -559,6 +562,16 @@ struct CalendarView: View {
         persist(result)
     }
 
+    /// Setzt Start/Ende eines Segments (Drag-Resize/Move in der Timeline).
+    private func adjustSegment(_ seg: Segment, start: Date, end: Date) {
+        guard end > start else { return }
+        var list = segments
+        guard let i = list.firstIndex(where: { $0.id == seg.id }) else { return }
+        list[i].start = start
+        list[i].end = end
+        persist(list)
+    }
+
     private func persist(_ list: [Segment]) {
         dayStore.save(date: selectedDate, segments: list)
         reload()
@@ -581,9 +594,23 @@ struct DayTimelineView: View {
     let startHour: Int
     let endHour: Int
     let onTap: (Segment) -> Void
+    let onAdjust: (Segment, Date, Date) -> Void
+    let onDragging: (Bool) -> Void
 
     private let hourHeight: CGFloat = 52
     private let gutter: CGFloat = 56
+    private let snapMinutes: Double = 5
+
+    @State private var drag: DragInfo?
+
+    struct DragInfo {
+        let id: UUID
+        let origStart: Date
+        let origEnd: Date
+        var start: Date
+        var end: Date
+        enum Mode { case move, top, bottom }
+    }
 
     var body: some View {
         ScrollView {
@@ -592,7 +619,6 @@ struct DayTimelineView: View {
                 let blockWidth = geo.size.width - gutter - 24
 
                 ZStack(alignment: .topLeading) {
-                    // Stundenraster
                     ForEach(startHour...endHour, id: \.self) { h in
                         let y = CGFloat(h - startHour) * hourHeight
                         Path { p in
@@ -601,15 +627,13 @@ struct DayTimelineView: View {
                         }
                         .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
                         Text(String(format: "%02d:00", h))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .font(.caption2).foregroundStyle(.secondary)
                             .position(x: gutter / 2, y: y)
                     }
-
-                    // Segmente
                     ForEach(segments) { seg in
-                        blockView(seg, width: blockWidth)
-                            .offset(x: gutter + 8, y: yOffset(seg.start))
+                        let p = preview(seg)
+                        blockView(seg, start: p.start, end: p.end, width: blockWidth)
+                            .offset(x: gutter + 8, y: yOffset(p.start))
                     }
                 }
                 .frame(height: totalHeight + 8)
@@ -620,57 +644,109 @@ struct DayTimelineView: View {
     }
 
     private func minutes(_ date: Date) -> CGFloat {
-        let cal = Calendar.current
-        let comps = cal.dateComponents([.hour, .minute], from: date)
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
         return CGFloat((comps.hour ?? 0) * 60 + (comps.minute ?? 0))
     }
-
     private func yOffset(_ date: Date) -> CGFloat {
         (minutes(date) - CGFloat(startHour) * 60) / 60 * hourHeight
     }
+    private func preview(_ seg: Segment) -> (start: Date, end: Date) {
+        if let d = drag, d.id == seg.id { return (d.start, d.end) }
+        return (seg.start, seg.end)
+    }
+
+    // MARK: - Drag-Logik
+
+    private func snappedSeconds(_ translationHeight: CGFloat) -> TimeInterval {
+        let mins = Double(translationHeight) / Double(hourHeight) * 60
+        return (mins / snapMinutes).rounded() * snapMinutes * 60
+    }
+    private func begin(_ seg: Segment) {
+        if drag?.id != seg.id {
+            drag = DragInfo(id: seg.id, origStart: seg.start, origEnd: seg.end,
+                            start: seg.start, end: seg.end)
+            onDragging(true)
+        }
+    }
+    private func update(_ mode: DragInfo.Mode, _ translationHeight: CGFloat) {
+        guard var d = drag else { return }
+        let ds = snappedSeconds(translationHeight)
+        switch mode {
+        case .move:
+            d.start = d.origStart.addingTimeInterval(ds); d.end = d.origEnd.addingTimeInterval(ds)
+        case .top:
+            d.start = min(d.origStart.addingTimeInterval(ds), d.origEnd.addingTimeInterval(-300)); d.end = d.origEnd
+        case .bottom:
+            d.end = max(d.origEnd.addingTimeInterval(ds), d.origStart.addingTimeInterval(300)); d.start = d.origStart
+        }
+        drag = d
+    }
+    private func commit(_ seg: Segment) {
+        if let d = drag, d.id == seg.id, d.start != d.origStart || d.end != d.origEnd {
+            onAdjust(seg, d.start, d.end)
+        }
+        drag = nil
+        onDragging(false)
+    }
 
     @ViewBuilder
-    private func blockView(_ seg: Segment, width: CGFloat) -> some View {
-        let h = max(16, CGFloat(seg.duration) / 3600 * hourHeight)
+    private func blockView(_ seg: Segment, start: Date, end: Date, width: CGFloat) -> some View {
+        let h = max(16, CGFloat(end.timeIntervalSince(start)) / 3600 * hourHeight)
         let isWork = seg.kind == .work
         let title = isWork ? (seg.ticket ?? "Arbeit") : "Pause"
-        Button {
-            onTap(seg)
-        } label: {
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isWork ? Color.accentColor.opacity(0.85) : Color.secondary.opacity(0.25))
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        if seg.source == .manual {
-                            Image(systemName: "pencil").font(.caption2)
-                        }
-                        Text(title).font(.caption).bold().lineLimit(1)
-                        Spacer(minLength: 4)
-                        if h >= 28 {
-                            Text("\(Fmt.clock(seg.start))–\(Fmt.clock(seg.end))")
-                                .font(.caption2).lineLimit(1).layoutPriority(-1)
-                        }
-                    }
-                    // Notiz nur, wenn der Block hoch genug ist (sonst Überlauf).
-                    if h >= 40, let n = seg.note, !n.isEmpty {
-                        Text(n).font(.caption2).lineLimit(1).opacity(0.9)
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isWork ? Color.accentColor.opacity(0.85) : Color.secondary.opacity(0.25))
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    if seg.source == .manual { Image(systemName: "pencil").font(.caption2) }
+                    Text(title).font(.caption).bold().lineLimit(1)
+                    Spacer(minLength: 4)
+                    if h >= 28 {
+                        Text("\(Fmt.clock(start))–\(Fmt.clock(end))")
+                            .font(.caption2).lineLimit(1).layoutPriority(-1)
                     }
                 }
-                .foregroundStyle(isWork ? Color.white : Color.primary)
-                .padding(.horizontal, 6).padding(.vertical, 3)
+                if h >= 40, let n = seg.note, !n.isEmpty {
+                    Text(n).font(.caption2).lineLimit(1).opacity(0.9)
+                }
             }
-            .frame(width: max(40, width), height: h, alignment: .topLeading)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(seg.source == .manual ? Color.white.opacity(0.9) : Color.clear,
-                            style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-            )
-            .contentShape(Rectangle())
+            .foregroundStyle(isWork ? Color.white : Color.primary)
+            .padding(.horizontal, 6).padding(.vertical, 3)
         }
-        .buttonStyle(.plain)
+        .frame(width: max(40, width), height: h, alignment: .topLeading)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(seg.source == .manual ? Color.white.opacity(0.9) : Color.clear,
+                        style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+        )
+        .overlay(alignment: .top) { if h >= 26 { handle(seg, .top) } }
+        .overlay(alignment: .bottom) { if h >= 26 { handle(seg, .bottom) } }
+        .contentShape(Rectangle())
+        .onTapGesture { if drag == nil { onTap(seg) } }
+        .gesture(
+            DragGesture(minimumDistance: 6)
+                .onChanged { v in begin(seg); update(.move, v.translation.height) }
+                .onEnded { _ in commit(seg) }
+        )
         .help(seg.note.map { "\(title) — \($0)" } ?? title)
+    }
+
+    private func handle(_ seg: Segment, _ mode: DragInfo.Mode) -> some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.001))
+            .frame(height: 11)
+            .overlay(Capsule().fill(Color.white.opacity(0.55)).frame(width: 26, height: 3))
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { v in begin(seg); update(mode, v.translation.height) }
+                    .onEnded { _ in commit(seg) }
+            )
+            .onHover { inside in
+                if inside { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() }
+            }
     }
 }
 
