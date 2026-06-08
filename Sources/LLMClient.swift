@@ -78,4 +78,22 @@ enum LLMClient {
         for (k, v) in obj { out[k] = String(describing: v) }
         return out
     }
+
+    /// Extrahiert ein JSON-Array von Objekten aus der Modellantwort.
+    static func parseJSONArray(_ text: String) -> [[String: Any]] {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let r = s.range(of: "```") {
+            s = String(s[r.upperBound...])
+            if s.hasPrefix("json") { s.removeFirst(4) }
+            if let end = s.range(of: "```") { s = String(s[..<end.lowerBound]) }
+        }
+        if let a = s.firstIndex(of: "["), let b = s.lastIndex(of: "]"), a < b {
+            s = String(s[a...b])
+        }
+        guard let data = s.data(using: .utf8),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
+        return arr
+    }
 }

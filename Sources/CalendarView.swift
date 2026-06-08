@@ -233,45 +233,69 @@ struct CalendarView: View {
         aiRunning = true
         defer { aiRunning = false }
         let cfg = configStore.config
-        let commits = ReportWriter.gatherCommits(date: selectedDate, projects: cfg.projects)
+
+        // Arbeitsblöcke des Tages (Index in der aktuellen Segmentliste).
+        let blocks = segments.enumerated().filter { $0.element.kind == .work }
+        guard !blocks.isEmpty else { aiMessage = "Keine Arbeitsblöcke an diesem Tag."; return }
+
+        // Commits mit Uhrzeit + Ticket (aus Branch ODER Commit-Text).
+        let day0 = cal.startOfDay(for: selectedDate)
+        let day1 = cal.date(byAdding: .day, value: 1, to: day0)!
+        struct CommitLine { let time: Date; let ticket: String?; let subject: String; let project: String }
+        var commits: [CommitLine] = []
+        for p in cfg.projects {
+            let branchTicket = GitProbe.ticket(fromBranch: GitProbe.currentBranch(p.repoPath))
+            for c in GitProbe.commitsBetween(repoPath: p.repoPath, since: day0, until: day1, authorEmail: p.gitUserEmail) {
+                let t = GitProbe.ticket(fromBranch: c.subject) ?? branchTicket
+                commits.append(CommitLine(time: c.date, ticket: t, subject: c.subject, project: p.name))
+            }
+        }
         guard !commits.isEmpty else {
             aiMessage = "Keine Commits für diesen Tag gefunden — Tätigkeiten bitte manuell ergänzen."
             return
         }
-        var lines: [String] = []
-        for rc in commits {
-            lines.append("\(rc.ticket ?? rc.project):")
-            for c in rc.commits { lines.append("  - \(c.subject)") }
-        }
-        let system = "Du dokumentierst Arbeitszeit knapp und sachlich auf Deutsch."
-        let user = """
-        Hier die Git-Commits dieses Tages je Ticket. Formuliere pro Ticket EINEN kurzen, \
-        sachlichen deutschen Satz (Stichworte ok), was inhaltlich gemacht wurde. \
-        Antworte NUR als JSON-Objekt {"TICKET":"Beschreibung"}.
+        commits.sort { $0.time < $1.time }
 
-        \(lines.joined(separator: "\n"))
+        var blockText = "Arbeitsblöcke:\n"
+        for (i, seg) in blocks { blockText += "[\(i)] \(Fmt.clock(seg.start))–\(Fmt.clock(seg.end))\n" }
+        var commitText = "Commits (Uhrzeit | Ticket | Projekt | Nachricht):\n"
+        for c in commits { commitText += "- \(Fmt.clock(c.time)) | \(c.ticket ?? "-") | \(c.project) | \(c.subject)\n" }
+
+        let system = "Du ordnest Arbeitszeit-Blöcke anhand von Git-Commits (mit Uhrzeiten) zu und beschreibst die Tätigkeit knapp und sachlich auf Deutsch."
+        let user = """
+        Ordne jedem Arbeitsblock anhand der Commit-Uhrzeiten das wahrscheinlichste \
+        Ticket zu (oder einen kurzen Titel, falls kein Ticketnummer-Bezug erkennbar ist), \
+        plus eine kurze deutsche Tätigkeitsbeschreibung. Nutze, welche Commits zeitlich \
+        in oder nahe am Block liegen. Wenn nichts passt, lass "ticket" leer.
+        Antworte NUR als JSON-Array: \
+        [{"block": <index>, "ticket": "<Ticket oder Titel oder ''>", "description": "<kurzer Satz>"}].
+
+        \(blockText)
+        \(commitText)
         """
         do {
             let text = try await LLMClient.complete(
                 baseURL: cfg.aiBaseURL, apiKey: cfg.aiApiKey, model: cfg.aiModel,
                 system: system, user: user)
-            let map = LLMClient.parseJSONMap(text)
-            guard !map.isEmpty else { aiMessage = "KI-Antwort konnte nicht gelesen werden."; return }
-            var list = dayStore.segments(date: selectedDate)
+            let arr = LLMClient.parseJSONArray(text)
+            guard !arr.isEmpty else { aiMessage = "KI-Antwort konnte nicht gelesen werden."; return }
+
+            var list = segments
             var filled = 0
-            for i in list.indices where list[i].kind == .work {
-                guard let t = list[i].ticket, (list[i].note ?? "").isEmpty else { continue }
-                if let desc = map.first(where: { $0.key.uppercased() == t.uppercased() })?.value {
-                    list[i].note = desc
-                    filled += 1
-                }
+            for item in arr {
+                guard let bi = item["block"] as? Int, list.indices.contains(bi),
+                      list[bi].kind == .work else { continue }
+                let ticket = (item["ticket"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let desc = (item["description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                var changed = false
+                if !ticket.isEmpty, (list[bi].ticket ?? "").isEmpty { list[bi].ticket = ticket; changed = true }
+                if !desc.isEmpty, (list[bi].note ?? "").isEmpty { list[bi].note = desc; changed = true }
+                if changed { filled += 1 }
             }
-            dayStore.save(date: selectedDate, segments: list)
-            reload()
-            tracker.writeReport(for: selectedDate)
+            if filled > 0 { persist(list) }
             aiMessage = filled > 0
-                ? "✓ \(filled) Block/Blöcke mit KI-Beschreibung gefüllt."
-                : "Keine passenden Tickets in den Zeitblöcken gefunden."
+                ? "✓ \(filled) Block/Blöcke per KI gefüllt (Ticket/Titel + Beschreibung)."
+                : "Keine neuen Zuordnungen gefunden (Blöcke schon ausgefüllt?)."
         } catch {
             aiMessage = "KI-Fehler: \(error.localizedDescription)"
         }
@@ -712,7 +736,7 @@ struct TicketAssignView: View {
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            TextField("Ticket (z. B. WCMS-2155)", text: $ticket)
+            TextField("Ticket oder Titel (z. B. WCMS-2155 oder „Meeting“)", text: $ticket)
                 .textFieldStyle(.roundedBorder)
             if !suggestions.isEmpty {
                 HStack(spacing: 8) {
