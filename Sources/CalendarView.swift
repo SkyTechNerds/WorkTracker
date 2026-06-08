@@ -87,9 +87,10 @@ struct CalendarView: View {
         .sheet(item: $assigningGroup) { g in
             TicketAssignView(
                 group: g.key,
+                available: groupSeconds(g.key),
                 suggestions: ticketSuggestions,
                 currentNote: noteForGroup(g.key),
-                onSave: { t, n in assignTicket(group: g.key, ticket: t, note: n) })
+                onSave: { t, n, dur in assignTicket(group: g.key, ticket: t, note: n, durationSeconds: dur) })
         }
         .alert("KI-Tätigkeiten", isPresented: Binding(
             get: { aiMessage != nil },
@@ -512,17 +513,57 @@ struct CalendarView: View {
         }?.note
     }
 
-    /// Weist allen Arbeitsblöcken einer Ticket-Gruppe ein Ticket (+ Notiz) zu.
-    private func assignTicket(group: String, ticket: String, note: String) {
+    private func groupSeconds(_ key: String) -> TimeInterval {
+        segments.filter { $0.kind == .work && ($0.ticket ?? "Ohne Ticket") == key }
+            .reduce(0) { $0 + $1.duration }
+    }
+
+    /// Weist Arbeitsblöcken einer Gruppe ein Ticket (+ Notiz) zu. Mit
+    /// `durationSeconds` wird nur dieser Anteil (vom frühesten Block an)
+    /// zugewiesen und ggf. ein Block geteilt; der Rest bleibt in der Gruppe.
+    private func assignTicket(group: String, ticket: String, note: String, durationSeconds: TimeInterval?) {
         let t = ticket.trimmingCharacters(in: .whitespacesAndNewlines)
         let n = note.trimmingCharacters(in: .whitespacesAndNewlines)
         var list = segments
-        for i in list.indices where list[i].kind == .work {
-            let key = list[i].ticket ?? "Ohne Ticket"
-            guard key == group else { continue }
-            list[i].ticket = t.isEmpty ? nil : t
-            if !n.isEmpty { list[i].note = n }
+        let targets = list.indices
+            .filter { list[$0].kind == .work && (list[$0].ticket ?? "Ohne Ticket") == group }
+            .sorted { list[$0].start < list[$1].start }
+        let total = targets.reduce(0.0) { $0 + list[$1].duration }
+
+        // Volle Zuweisung (kein bzw. voller Dauerwert).
+        guard let dur = durationSeconds, dur > 0, dur < total - 1 else {
+            for i in targets {
+                list[i].ticket = t.isEmpty ? nil : t
+                if !n.isEmpty { list[i].note = n }
+            }
+            persist(list)
+            return
         }
+
+        // Teil-Zuweisung: vom frühesten Block an `dur` Sekunden zuweisen.
+        var remaining = dur
+        var added: [Segment] = []
+        for i in targets {
+            if remaining <= 0 { break }
+            let seg = list[i]
+            if seg.duration <= remaining + 1 {
+                list[i].ticket = t.isEmpty ? nil : t
+                if !n.isEmpty { list[i].note = n }
+                remaining -= seg.duration
+            } else {
+                let cut = seg.start.addingTimeInterval(remaining)
+                var assigned = seg
+                assigned.id = UUID()
+                assigned.end = cut
+                assigned.ticket = t.isEmpty ? nil : t
+                assigned.note = n.isEmpty ? seg.note : n
+                assigned.source = .manual
+                list[i].start = cut          // Restblock bleibt in der Gruppe
+                added.append(assigned)
+                remaining = 0
+            }
+        }
+        list.append(contentsOf: added)
         persist(list)
     }
 
@@ -728,27 +769,37 @@ struct DeleteBreakView: View {
 
 struct TicketAssignView: View {
     let group: String
+    let available: TimeInterval
     let suggestions: [String]
-    let onSave: (String, String) -> Void
+    let onSave: (String, String, TimeInterval?) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var ticket: String
     @State private var note: String
+    @State private var minutes: Int
+    private let fullMinutes: Int
 
-    init(group: String, suggestions: [String], currentNote: String?,
-         onSave: @escaping (String, String) -> Void) {
+    init(group: String, available: TimeInterval, suggestions: [String],
+         currentNote: String?, onSave: @escaping (String, String, TimeInterval?) -> Void) {
         self.group = group
+        self.available = available
         self.suggestions = suggestions
         self.onSave = onSave
+        let full = max(0, Int((available / 60).rounded()))
+        self.fullMinutes = full
+        _minutes = State(initialValue: full)
         _ticket = State(initialValue: group == "Ohne Ticket" ? "" : group)
         _note = State(initialValue: currentNote ?? "")
     }
+
+    /// Dauer-Aufteilung nur sinnvoll beim Zuordnen von „Ohne Ticket"-Zeit.
+    private var allowDuration: Bool { group == "Ohne Ticket" && fullMinutes > 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(group == "Ohne Ticket" ? "Ticket zuweisen" : "Ticket bearbeiten")
                 .font(.headline)
-            Text("Gilt für alle Arbeitsblöcke \(group == "Ohne Ticket" ? "ohne Ticket" : "von \(group)") an diesem Tag.")
+            Text("Gilt für \(group == "Ohne Ticket" ? "die nicht zugeordnete Zeit" : "alle Blöcke von \(group)") an diesem Tag.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -766,17 +817,34 @@ struct TicketAssignView: View {
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1...3)
 
+            if allowDuration {
+                Divider()
+                Stepper(value: $minutes, in: 0...fullMinutes, step: 5) {
+                    LabeledContent("Dauer für dieses Ticket",
+                                   value: Fmt.hm(Double(minutes * 60)))
+                }
+                Text("Verfügbar: \(Fmt.hm(Double(fullMinutes * 60))). Weniger wählen → der Rest bleibt „Ohne Ticket“ (z. B. für Arbeit ohne GitHub-Commit wie Figma).")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Divider()
             HStack {
                 Spacer()
                 Button("Abbrechen") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Sichern") { onSave(ticket, note); dismiss() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
+                Button("Sichern") {
+                    let dur: TimeInterval? = (allowDuration && minutes < fullMinutes)
+                        ? Double(minutes * 60) : nil
+                    let t = ticket, n = note, f = onSave
+                    dismiss()
+                    DispatchQueue.main.async { f(t, n, dur) }
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
-        .frame(width: 420)
+        .frame(width: 440)
     }
 }
