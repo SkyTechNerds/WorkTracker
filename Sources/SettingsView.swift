@@ -317,17 +317,33 @@ struct AISettingsView: View {
             }
 
             Section("Anbieter") {
-                Menu("Vorlage wählen…") {
-                    Button("MiniMax") { setProvider("https://api.minimax.io/v1", "MiniMax-Text-01") }
-                    Button("OpenAI") { setProvider("https://api.openai.com/v1", "gpt-4o-mini") }
-                    Button("Google Gemini") { setProvider("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.0-flash") }
+                Picker("Anbieter", selection: providerBinding) {
+                    ForEach(AIProvider.allCases) { p in
+                        Text(p.label).tag(p)
+                    }
                 }
-                TextField("Basis-URL", text: $configStore.config.aiBaseURL)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Modell", text: $configStore.config.aiModel)
-                    .textFieldStyle(.roundedBorder)
+
+                if configStore.config.aiProvider == .custom {
+                    TextField("Basis-URL", text: $configStore.config.aiBaseURL)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Modell", text: $configStore.config.aiModel)
+                        .textFieldStyle(.roundedBorder)
+                } else {
+                    Picker("Modell", selection: $configStore.config.aiModel) {
+                        ForEach(modelOptions, id: \.self) { Text($0).tag($0) }
+                    }
+                }
+
                 SecureField("API-Key", text: $configStore.config.aiApiKey)
                     .textFieldStyle(.roundedBorder)
+
+                if let key = configStore.config.aiProvider.keyURL, let url = URL(string: key) {
+                    Link("API-Key holen ↗", destination: url)
+                        .font(.caption)
+                }
+            }
+
+            Section {
                 Text("Der Key wird lokal in der config.json gespeichert.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -335,8 +351,25 @@ struct AISettingsView: View {
         .formStyle(.grouped)
     }
 
-    private func setProvider(_ url: String, _ model: String) {
-        configStore.config.aiBaseURL = url
-        configStore.config.aiModel = model
+    /// Bei Anbieterwechsel Basis-URL + Standardmodell setzen (außer „Eigener").
+    private var providerBinding: Binding<AIProvider> {
+        Binding(
+            get: { configStore.config.aiProvider },
+            set: { p in
+                configStore.config.aiProvider = p
+                if p != .custom {
+                    configStore.config.aiBaseURL = p.baseURL
+                    if !p.models.contains(configStore.config.aiModel) {
+                        configStore.config.aiModel = p.models.first ?? ""
+                    }
+                }
+            })
+    }
+
+    private var modelOptions: [String] {
+        var m = configStore.config.aiProvider.models
+        let current = configStore.config.aiModel
+        if !current.isEmpty && !m.contains(current) { m.append(current) }
+        return m
     }
 }

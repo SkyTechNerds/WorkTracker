@@ -97,6 +97,62 @@ struct AnyCodingKey: CodingKey {
     init?(intValue: Int) { return nil }
 }
 
+/// KI-Anbieter (OpenAI-kompatibel) mit Endpoint, Modell-Vorschlägen und der
+/// Seite, auf der man einen API-Key bekommt.
+enum AIProvider: String, Codable, CaseIterable, Identifiable {
+    case gemini
+    case minimax
+    case openai
+    case custom
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .gemini:  return "Google Gemini"
+        case .minimax: return "MiniMax"
+        case .openai:  return "OpenAI"
+        case .custom:  return "Eigener (OpenAI-kompatibel)"
+        }
+    }
+
+    var baseURL: String {
+        switch self {
+        case .gemini:  return "https://generativelanguage.googleapis.com/v1beta/openai"
+        case .minimax: return "https://api.minimax.io/v1"
+        case .openai:  return "https://api.openai.com/v1"
+        case .custom:  return ""
+        }
+    }
+
+    var models: [String] {
+        switch self {
+        case .gemini:  return ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"]
+        case .minimax: return ["MiniMax-Text-01"]
+        case .openai:  return ["gpt-4o-mini", "gpt-4o", "o4-mini"]
+        case .custom:  return []
+        }
+    }
+
+    /// Seite, auf der man den API-Key erhält.
+    var keyURL: String? {
+        switch self {
+        case .gemini:  return "https://aistudio.google.com/apikey"
+        case .minimax: return "https://www.minimax.io/platform"
+        case .openai:  return "https://platform.openai.com/api-keys"
+        case .custom:  return nil
+        }
+    }
+
+    static func infer(fromBaseURL url: String) -> AIProvider {
+        let u = url.lowercased()
+        if u.contains("googleapis") { return .gemini }
+        if u.contains("minimax")    { return .minimax }
+        if u.contains("openai.com") { return .openai }
+        return .custom
+    }
+}
+
 /// Gesamte App-Konfiguration.
 struct AppConfig: Codable, Equatable {
     var outputDir: String
@@ -116,8 +172,9 @@ struct AppConfig: Codable, Equatable {
     var menuIcon: MenuIconStyle
     // Rundung der ausgewiesenen Zeiten in Minuten (0 = exakt, z. B. 15).
     var roundingMinutes: Int
-    // KI-Taetigkeitsbeschreibung (OpenAI-kompatibel: MiniMax/OpenAI/Gemini).
+    // KI-Taetigkeitsbeschreibung (OpenAI-kompatibel: Gemini/MiniMax/OpenAI).
     var aiEnabled: Bool
+    var aiProvider: AIProvider
     var aiBaseURL: String
     var aiModel: String
     var aiApiKey: String
@@ -142,8 +199,9 @@ struct AppConfig: Codable, Equatable {
             menuIcon: .briefcase,
             roundingMinutes: 0,
             aiEnabled: false,
-            aiBaseURL: "https://api.minimax.io/v1",
-            aiModel: "MiniMax-Text-01",
+            aiProvider: .gemini,
+            aiBaseURL: AIProvider.gemini.baseURL,
+            aiModel: "gemini-2.5-flash",
             aiApiKey: ""
         )
     }
@@ -171,6 +229,9 @@ extension AppConfig {
         aiBaseURL = try c.decodeIfPresent(String.self, forKey: .aiBaseURL) ?? d.aiBaseURL
         aiModel = try c.decodeIfPresent(String.self, forKey: .aiModel) ?? d.aiModel
         aiApiKey = try c.decodeIfPresent(String.self, forKey: .aiApiKey) ?? d.aiApiKey
+        // Provider neu – sonst aus der Basis-URL ableiten (Bestandskonfig).
+        aiProvider = try c.decodeIfPresent(AIProvider.self, forKey: .aiProvider)
+            ?? AIProvider.infer(fromBaseURL: aiBaseURL)
 
         // promptMode (neu) – sonst Legacy-Bool "confirmStart" uebernehmen.
         if let m = try c.decodeIfPresent(PromptMode.self, forKey: .promptMode) {
