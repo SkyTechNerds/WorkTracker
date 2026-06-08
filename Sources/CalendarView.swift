@@ -45,6 +45,7 @@ struct CalendarView: View {
     @State private var segments: [Segment] = []
     @State private var editorTarget: EditorTarget?
     @State private var deletingBreak: Segment?
+    @State private var assigningGroup: TicketGroupRef?
     @State private var aiRunning = false
     @State private var aiMessage: String?
 
@@ -76,6 +77,13 @@ struct CalendarView: View {
                 breakSeg: brk,
                 onExtend: { until in extendOverDeletedBreak(brk, until: until) },
                 onJustDelete: { delete(brk) })
+        }
+        .sheet(item: $assigningGroup) { g in
+            TicketAssignView(
+                group: g.key,
+                suggestions: ticketSuggestions,
+                currentNote: noteForGroup(g.key),
+                onSave: { t, n in assignTicket(group: g.key, ticket: t, note: n) })
         }
         .alert("KI-Tätigkeiten", isPresented: Binding(
             get: { aiMessage != nil },
@@ -162,20 +170,32 @@ struct CalendarView: View {
                 Spacer()
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
                         ForEach(rows, id: \.ticket) { row in
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack {
-                                    Text(row.ticket).font(.callout).bold()
-                                    Spacer()
-                                    Text(Fmt.hm(row.seconds, roundTo: r))
-                                        .font(.callout).monospacedDigit()
-                                        .foregroundStyle(.secondary)
+                            Button {
+                                assigningGroup = TicketGroupRef(key: row.ticket)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack {
+                                        Text(row.ticket).font(.callout).bold()
+                                            .foregroundStyle(row.ticket == "Ohne Ticket" ? .orange : .primary)
+                                        Spacer()
+                                        Text(Fmt.hm(row.seconds, roundTo: r))
+                                            .font(.callout).monospacedDigit()
+                                            .foregroundStyle(.secondary)
+                                        Image(systemName: "pencil")
+                                            .font(.caption2).foregroundStyle(.tertiary)
+                                    }
+                                    if let n = row.note, !n.isEmpty {
+                                        Text(n).font(.caption).foregroundStyle(.secondary)
+                                            .multilineTextAlignment(.leading)
+                                    }
                                 }
-                                if let n = row.note, !n.isEmpty {
-                                    Text(n).font(.caption).foregroundStyle(.secondary)
-                                }
+                                .contentShape(Rectangle())
+                                .padding(.vertical, 4)
                             }
+                            .buttonStyle(.plain)
+                            .help("Ticket zuweisen / bearbeiten")
                         }
                     }
                     .padding(12)
@@ -444,12 +464,46 @@ struct CalendarView: View {
         persist(list)
     }
 
+    // MARK: - Ticket-Zuweisung (Panel)
+
+    private var ticketSuggestions: [String] {
+        Array(Set(configStore.config.projects.compactMap {
+            GitProbe.ticket(fromBranch: GitProbe.currentBranch($0.repoPath))
+        })).sorted()
+    }
+
+    private func noteForGroup(_ key: String) -> String? {
+        segments.first {
+            $0.kind == .work && ($0.ticket ?? "Ohne Ticket") == key && !($0.note ?? "").isEmpty
+        }?.note
+    }
+
+    /// Weist allen Arbeitsblöcken einer Ticket-Gruppe ein Ticket (+ Notiz) zu.
+    private func assignTicket(group: String, ticket: String, note: String) {
+        let t = ticket.trimmingCharacters(in: .whitespacesAndNewlines)
+        let n = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        var list = segments
+        for i in list.indices where list[i].kind == .work {
+            let key = list[i].ticket ?? "Ohne Ticket"
+            guard key == group else { continue }
+            list[i].ticket = t.isEmpty ? nil : t
+            if !n.isEmpty { list[i].note = n }
+        }
+        persist(list)
+    }
+
     private func persist(_ list: [Segment]) {
         dayStore.save(date: selectedDate, segments: list)
         reload()
         tracker.writeReport(for: selectedDate)
         if cal.isDateInToday(selectedDate) { tracker.refreshSummary() }
     }
+}
+
+/// Wrapper, damit eine Ticket-Gruppe als `.sheet(item:)` präsentierbar ist.
+struct TicketGroupRef: Identifiable {
+    let key: String
+    var id: String { key }
 }
 
 // MARK: - Tages-Timeline
@@ -627,5 +681,62 @@ struct DeleteBreakView: View {
         }
         .padding(20)
         .frame(width: 440)
+    }
+}
+
+// MARK: - Ticket einer Gruppe zuweisen/bearbeiten
+
+struct TicketAssignView: View {
+    let group: String
+    let suggestions: [String]
+    let onSave: (String, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var ticket: String
+    @State private var note: String
+
+    init(group: String, suggestions: [String], currentNote: String?,
+         onSave: @escaping (String, String) -> Void) {
+        self.group = group
+        self.suggestions = suggestions
+        self.onSave = onSave
+        _ticket = State(initialValue: group == "Ohne Ticket" ? "" : group)
+        _note = State(initialValue: currentNote ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(group == "Ohne Ticket" ? "Ticket zuweisen" : "Ticket bearbeiten")
+                .font(.headline)
+            Text("Gilt für alle Arbeitsblöcke \(group == "Ohne Ticket" ? "ohne Ticket" : "von \(group)") an diesem Tag.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            TextField("Ticket (z. B. WCMS-2155)", text: $ticket)
+                .textFieldStyle(.roundedBorder)
+            if !suggestions.isEmpty {
+                HStack(spacing: 8) {
+                    Text("Vorschläge:").font(.caption).foregroundStyle(.secondary)
+                    ForEach(suggestions, id: \.self) { t in
+                        Button(t) { ticket = t }.buttonStyle(.link).font(.caption)
+                    }
+                }
+            }
+            TextField("Notiz (was wurde gemacht, optional)", text: $note, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...3)
+
+            Divider()
+            HStack {
+                Spacer()
+                Button("Abbrechen") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Sichern") { onSave(ticket, note); dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
     }
 }
