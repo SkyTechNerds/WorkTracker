@@ -24,6 +24,10 @@
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Zeigt den Titel des laufenden Termins als Meeting-Namen an.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Zeigt den Titel des laufenden Termins als Meeting-Namen an.</string>
     <key>NSHumanReadableCopyright</key>
     <string>WorkTracker</string>
     <key>NSPrincipalClass</key>

@@ -379,10 +379,15 @@ final class Tracker: ObservableObject {
         let callApp = config.detectCalls ? CallDetector.activeCall() : nil
         inCall = (callApp != nil)
         callAppName = callApp
+        // Namen aus dem laufenden Kalender-Termin ergänzen, falls vorhanden.
+        var callLabel = callApp
+        if let a = callApp, let title = CalendarLookup.shared.currentEventTitle(), !title.isEmpty {
+            callLabel = "\(title) · \(a)"
+        }
 
         log(Event(ts: Date(), type: .sample, app: app,
                   repo: bestRepo?.name, branch: bestRepo?.branch,
-                  ticket: bestRepo?.ticket, call: callApp))
+                  ticket: bestRepo?.ticket, call: callLabel))
     }
 
     // MARK: - Helpers

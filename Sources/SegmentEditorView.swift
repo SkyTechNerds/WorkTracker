@@ -77,8 +77,16 @@ struct SegmentEditorView: View {
                             }
                         }
                     }
-                    TextField("Notiz (was wurde gemacht)", text: $note, axis: .vertical)
-                        .lineLimit(1...3)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Beschreibung (mehrzeilig, Markdown möglich)")
+                            .font(.caption).foregroundStyle(.secondary)
+                        TextEditor(text: $note)
+                            .frame(minHeight: 90)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .padding(6)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+                    }
                 }
             }
             .formStyle(.grouped)
