@@ -25,8 +25,7 @@ final class Updater: ObservableObject {
     @Published var installing = false
     @Published var statusMessage: String?
 
-    /// GitHub-API für das jeweils neueste Release. Austauschbar (eigener Server).
-    private let feedURL = URL(string: "https://api.github.com/repos/SkyTechNerds/WorkTracker/releases/latest")!
+    private let repo = "SkyTechNerds/WorkTracker"
 
     var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
@@ -34,31 +33,46 @@ final class Updater: ObservableObject {
 
     // MARK: - Prüfen
 
-    func check(silent: Bool = true) async {
+    /// `beta=true` bezieht auch Vorab-Releases (Prereleases) ein.
+    func check(silent: Bool = true, beta: Bool = false) async {
         guard !checking else { return }
         checking = true
         defer { checking = false }
         do {
-            var req = URLRequest(url: feedURL)
+            // Stable: /releases/latest (ignoriert Prereleases). Beta: alle Releases.
+            let urlStr = beta
+                ? "https://api.github.com/repos/\(repo)/releases?per_page=10"
+                : "https://api.github.com/repos/\(repo)/releases/latest"
+            var req = URLRequest(url: URL(string: urlStr)!)
             req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
             req.timeoutInterval = 20
             let (data, resp) = try await URLSession.shared.data(for: req)
-            guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-                  let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tag = obj["tag_name"] as? String else {
+            guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 if !silent { statusMessage = "Update-Prüfung fehlgeschlagen (Repo public?)." }
                 return
             }
-            let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-            let assets = obj["assets"] as? [[String: Any]] ?? []
+            // Release-Objekt bestimmen (Beta: neuestes aus der Liste).
+            let release: [String: Any]?
+            if beta {
+                release = (try JSONSerialization.jsonObject(with: data) as? [[String: Any]])?.first
+            } else {
+                release = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            }
+            guard let rel = release, let tag = rel["tag_name"] as? String else {
+                if !silent { statusMessage = "Kein Release gefunden." }
+                return
+            }
+            let version = numericVersion(tag)
+            let assets = rel["assets"] as? [[String: Any]] ?? []
             let zip = assets.first { ($0["name"] as? String)?.lowercased().hasSuffix(".zip") == true }
-            guard let urlStr = zip?["browser_download_url"] as? String, let url = URL(string: urlStr) else {
+            guard let dl = zip?["browser_download_url"] as? String, let url = URL(string: dl) else {
                 if !silent { statusMessage = "Kein ZIP im Release gefunden." }
                 return
             }
+            let label = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
             if isNewer(version, than: currentVersion) {
-                available = ReleaseInfo(version: version, zipURL: url, notes: obj["body"] as? String)
-                if !silent { statusMessage = "Update verfügbar: v\(version)" }
+                available = ReleaseInfo(version: label, zipURL: url, notes: rel["body"] as? String)
+                if !silent { statusMessage = "Update verfügbar: v\(label)" }
             } else {
                 available = nil
                 if !silent { statusMessage = "Du bist aktuell (v\(currentVersion))." }
@@ -66,6 +80,13 @@ final class Updater: ObservableObject {
         } catch {
             if !silent { statusMessage = "Update-Prüfung fehlgeschlagen: \(error.localizedDescription)" }
         }
+    }
+
+    /// "v0.2.0-beta1" -> "0.2.0" für den Versionsvergleich.
+    private func numericVersion(_ s: String) -> String {
+        var v = s.hasPrefix("v") ? String(s.dropFirst()) : s
+        if let dash = v.firstIndex(of: "-") { v = String(v[..<dash]) }
+        return v
     }
 
     private func isNewer(_ a: String, than b: String) -> Bool {

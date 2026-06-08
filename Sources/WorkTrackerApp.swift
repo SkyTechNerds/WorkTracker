@@ -35,8 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if configStore.config.autoCheckUpdates {
             let autoInstall = configStore.config.autoInstallUpdates
+            let beta = configStore.config.betaUpdates
             Task {
-                await Updater.shared.check(silent: true)
+                await Updater.shared.check(silent: true, beta: beta)
                 if Updater.shared.available != nil, autoInstall {
                     await Updater.shared.installUpdate()
                 }
@@ -172,7 +173,7 @@ struct MenuContentView: View {
 
         if updater.available == nil {
             Button(updater.checking ? "Suche Updates…" : "Nach Updates suchen") {
-                Task { await updater.check(silent: false) }
+                Task { await updater.check(silent: false, beta: configStore.config.betaUpdates) }
             }
             .disabled(updater.checking)
         }

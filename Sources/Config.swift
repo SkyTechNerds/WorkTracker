@@ -173,6 +173,7 @@ struct AppConfig: Codable, Equatable {
     // Updates: beim Start prüfen / gefundene Updates automatisch installieren.
     var autoCheckUpdates: Bool
     var autoInstallUpdates: Bool
+    var betaUpdates: Bool
     // Mitteilung bei neu erkanntem Ticket.
     var notifyTaskStart: Bool
     // Menueleisten-Icon.
@@ -211,6 +212,7 @@ struct AppConfig: Codable, Equatable {
             detectCalls: true,
             autoCheckUpdates: true,
             autoInstallUpdates: false,
+            betaUpdates: false,
             notifyTaskStart: true,
             menuIcon: .briefcase,
             roundingMinutes: 0,
@@ -245,6 +247,7 @@ extension AppConfig {
         detectCalls = try c.decodeIfPresent(Bool.self, forKey: .detectCalls) ?? d.detectCalls
         autoCheckUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? d.autoCheckUpdates
         autoInstallUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoInstallUpdates) ?? d.autoInstallUpdates
+        betaUpdates = try c.decodeIfPresent(Bool.self, forKey: .betaUpdates) ?? d.betaUpdates
         notifyTaskStart = try c.decodeIfPresent(Bool.self, forKey: .notifyTaskStart) ?? d.notifyTaskStart
         menuIcon = try c.decodeIfPresent(MenuIconStyle.self, forKey: .menuIcon) ?? d.menuIcon
         roundingMinutes = try c.decodeIfPresent(Int.self, forKey: .roundingMinutes) ?? d.roundingMinutes

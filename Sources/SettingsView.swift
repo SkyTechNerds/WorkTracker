@@ -154,9 +154,10 @@ struct GeneralSettingsView: View {
                 LabeledContent("Version", value: "v\(updater.currentVersion)")
                 Toggle("Beim Start nach Updates suchen", isOn: $configStore.config.autoCheckUpdates)
                 Toggle("Updates automatisch installieren", isOn: $configStore.config.autoInstallUpdates)
+                Toggle("Beta-Updates (Vorab-Versionen)", isOn: $configStore.config.betaUpdates)
                 HStack {
                     Button(updater.checking ? "Suche…" : "Jetzt prüfen") {
-                        Task { await updater.check(silent: false) }
+                        Task { await updater.check(silent: false, beta: configStore.config.betaUpdates) }
                     }
                     .disabled(updater.checking)
                     if let info = updater.available {
