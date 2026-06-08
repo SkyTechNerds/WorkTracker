@@ -13,9 +13,12 @@ import EventKit
 final class CalendarLookup {
     static let shared = CalendarLookup()
     private let store = EKEventStore()
+    private var didRequest = false
 
     /// Einmalig Kalender-Zugriff anfragen.
-    func requestAccess() {
+    private func requestAccessOnce() {
+        guard !didRequest else { return }
+        didRequest = true
         if #available(macOS 14.0, *) {
             store.requestFullAccessToEvents { _, _ in }
         } else {
@@ -24,9 +27,11 @@ final class CalendarLookup {
     }
 
     /// Titel eines Termins, der gerade läuft (nicht ganztägig). nil ohne Zugriff
-    /// oder ohne passenden Termin.
+    /// oder ohne passenden Termin. Fragt den Zugriff bei Bedarf einmal an –
+    /// also erst, wenn wirklich ein Call läuft, nicht schon beim App-Start.
     func currentEventTitle(now: Date = Date()) -> String? {
         let status = EKEventStore.authorizationStatus(for: .event)
+        if status == .notDetermined { requestAccessOnce(); return nil }
         let ok: Bool
         if #available(macOS 14.0, *) { ok = (status == .fullAccess) }
         else { ok = (status == .authorized) }

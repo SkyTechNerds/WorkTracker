@@ -12,15 +12,19 @@ import CoreAudio
 import AppKit
 
 enum CallDetector {
-    /// Native Call-Apps: Bundle-ID-Fragment -> Anzeigename.
-    static let callApps: [(idFragment: String, name: String)] = [
+    /// Arbeits-Call-Apps: Bundle-ID-Fragment -> Anzeigename.
+    static let workCallApps: [(idFragment: String, name: String)] = [
         ("com.microsoft.teams", "Teams"),
         ("us.zoom.xos", "Zoom"),
         ("com.tinyspeck.slackmacgap", "Slack"),
         ("com.cisco.webexmeetingsapp", "Webex"),
         ("cisco-systems.spark", "Webex"),
-        ("com.hnc.discord", "Discord"),
-        ("com.apple.facetime", "FaceTime"),
+    ]
+
+    /// Private Call-Apps -> NIE als Arbeit zählen.
+    static let privateCallApps: [String] = [
+        "com.hnc.discord",
+        "com.apple.facetime",
     ]
 
     // MARK: - Mikrofon
@@ -79,24 +83,22 @@ enum CallDetector {
 
     // MARK: - Call-App
 
-    /// Name einer laufenden bekannten Call-App – bevorzugt die Vordergrund-App.
-    static func runningCallApp() -> String? {
-        if let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier?.lowercased(),
-           let m = callApps.first(where: { front.contains($0.idFragment) }) {
-            return m.name
-        }
-        for app in NSWorkspace.shared.runningApplications {
-            guard let bid = app.bundleIdentifier?.lowercased() else { continue }
-            if let m = callApps.first(where: { bid.contains($0.idFragment) }) {
-                return m.name
-            }
-        }
-        return nil
-    }
-
-    /// Call-App-Name, wenn aktuell ein Call läuft (Mikro aktiv UND Call-App), sonst nil.
+    /// Arbeits-Call-Name, wenn aktuell ein ARBEITS-Call läuft (Mikro aktiv).
+    /// Private Apps (Discord/FaceTime) zählen nie als Arbeit:
+    /// - Vordergrund = private App  -> kein Arbeits-Call (du bist im Privat-Call).
+    /// - Vordergrund = Arbeits-App  -> diese.
+    /// - sonst: irgendeine laufende Arbeits-Call-App (private ignoriert).
     static func activeCall() -> String? {
         guard micActive() else { return nil }
-        return runningCallApp()
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier?.lowercased() ?? ""
+
+        if privateCallApps.contains(where: { front.contains($0) }) { return nil }
+        if let m = workCallApps.first(where: { front.contains($0.idFragment) }) { return m.name }
+
+        for app in NSWorkspace.shared.runningApplications {
+            guard let bid = app.bundleIdentifier?.lowercased() else { continue }
+            if let m = workCallApps.first(where: { bid.contains($0.idFragment) }) { return m.name }
+        }
+        return nil
     }
 }

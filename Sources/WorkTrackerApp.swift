@@ -29,7 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         Notifier.requestAuthorization()
-        CalendarLookup.shared.requestAccess()
+        // Kalender-Zugriff NICHT beim Start anfragen – erst lazy, wenn wirklich
+        // ein Call läuft (siehe CalendarLookup.currentEventTitle).
         tracker.start()
     }
 
