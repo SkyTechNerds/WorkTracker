@@ -57,7 +57,6 @@ final class Tracker: ObservableObject {
     private var lastNotifiedTicket: String?
     private var endedForDay: String?          // Tagesschluessel mit Feierabend
     private var isEnded: Bool { endedForDay == currentDayKey }
-    private var callTitle: String?            // gecachter Meeting-Titel des laufenden Calls
 
     private var evalTimer: Timer?
     private var sampleTimer: Timer?
@@ -214,10 +213,9 @@ final class Tracker: ObservableObject {
         let idle = idleSeconds()
         // Call erkennen: ein laufender Call zählt als aktiv, auch ohne Tastatur-
         // Input (sonst würde ein Meeting fälschlich als Pause erkannt).
-        let callApp = config.detectCalls ? CallDetector.activeCall() : nil
-        inCall = (callApp != nil)
-        callAppName = callApp
-        if !inCall { callTitle = nil }   // Call vorbei -> Titel-Cache leeren
+        let label = meetingLabel()
+        inCall = (label != nil)
+        callAppName = label
         let desired = !screenLocked && !screenAsleep && (idle < threshold || inCall)
 
         // Kein Zustandswechsel noetig.
@@ -386,20 +384,23 @@ final class Tracker: ObservableObject {
             Notifier.post(title: "Aufgabe: \(t)", body: repoName)
         }
 
-        let callApp = config.detectCalls ? CallDetector.activeCall() : nil
-        inCall = (callApp != nil)
-        callAppName = callApp
-        // Stabiles Segment-Label: einmal gefundener Kalender-Titel wird für die
-        // Call-Dauer gecacht (sonst flippt es zwischen Titel und "Meeting").
-        var callLabel: String? = nil
-        if callApp != nil {
-            if let t = CalendarLookup.shared.currentEventTitle() { callTitle = t }
-            callLabel = callTitle ?? "Meeting"
-        }
+        let label = meetingLabel()
+        inCall = (label != nil)
+        callAppName = label
 
         log(Event(ts: Date(), type: .sample, app: app,
                   repo: bestRepo?.name, branch: bestRepo?.branch,
-                  ticket: bestRepo?.ticket, call: callLabel))
+                  ticket: bestRepo?.ticket, call: label))
+    }
+
+    /// Aktueller Meeting-Name oder nil. Primär über den laufenden Kalender-Termin
+    /// (zuverlässig); optional zusätzlich per Mikrofon+Call-App (Ad-hoc-Calls),
+    /// das aber bei manchen Headsets fehlauslöst -> standardmäßig aus.
+    private func meetingLabel() -> String? {
+        guard config.detectCalls else { return nil }
+        if let title = CalendarLookup.shared.currentEventTitle(), !title.isEmpty { return title }
+        if config.detectCallsViaMic, CallDetector.activeCall() != nil { return "Meeting" }
+        return nil
     }
 
     // MARK: - Helpers

@@ -168,8 +168,11 @@ struct AppConfig: Codable, Equatable {
     var promptAfterBreakMinutes: Int
     // Zuklappen/Standby (System-Sleep) zählt als Feierabend (statt nur Pause).
     var endDayOnSleep: Bool
-    // Calls (Teams/Zoom/…) erkennen und als "Meeting" labeln.
+    // Meetings erkennen und als "Meeting" labeln (primär über Kalender-Termin).
     var detectCalls: Bool
+    // Zusätzlich per Mikrofon+Call-App erkennen (für Ad-hoc-Calls ohne Termin).
+    // Standard aus: manche Headsets halten das Mikro dauerhaft "aktiv".
+    var detectCallsViaMic: Bool
     // Updates: beim Start prüfen / gefundene Updates automatisch installieren.
     var autoCheckUpdates: Bool
     var autoInstallUpdates: Bool
@@ -210,6 +213,7 @@ struct AppConfig: Codable, Equatable {
             promptAfterBreakMinutes: 20,
             endDayOnSleep: true,
             detectCalls: true,
+            detectCallsViaMic: false,
             autoCheckUpdates: true,
             autoInstallUpdates: false,
             betaUpdates: false,
@@ -245,6 +249,7 @@ extension AppConfig {
         promptAfterBreakMinutes = try c.decodeIfPresent(Int.self, forKey: .promptAfterBreakMinutes) ?? d.promptAfterBreakMinutes
         endDayOnSleep = try c.decodeIfPresent(Bool.self, forKey: .endDayOnSleep) ?? d.endDayOnSleep
         detectCalls = try c.decodeIfPresent(Bool.self, forKey: .detectCalls) ?? d.detectCalls
+        detectCallsViaMic = try c.decodeIfPresent(Bool.self, forKey: .detectCallsViaMic) ?? d.detectCallsViaMic
         autoCheckUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? d.autoCheckUpdates
         autoInstallUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoInstallUpdates) ?? d.autoInstallUpdates
         betaUpdates = try c.decodeIfPresent(Bool.self, forKey: .betaUpdates) ?? d.betaUpdates

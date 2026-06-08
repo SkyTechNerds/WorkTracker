@@ -63,9 +63,13 @@ struct GeneralSettingsView: View {
                     LabeledContent("Pausen-Warnung ab",
                                    value: "\(configStore.config.breakCapMinutes) min")
                 }
-                Toggle("Calls erkennen (Teams/Zoom → „Meeting“)",
+                Toggle("Meetings erkennen (Kalender → „Meeting“)",
                        isOn: $configStore.config.detectCalls)
-                Text("Erkennt laufende Calls über aktives Mikrofon + geöffnete Call-App und labelt die Zeit automatisch als „Meeting“. Verhindert auch, dass ein Call ohne Tastatur-Input als Pause zählt.")
+                if configStore.config.detectCalls {
+                    Toggle("Zusätzlich per Mikrofon (Ad-hoc-Calls)",
+                           isOn: $configStore.config.detectCallsViaMic)
+                }
+                Text("Erkennt Meetings primär über den laufenden Kalender-Termin (zuverlässig) und labelt die Zeit automatisch mit dem Termin-Namen. Die Mikrofon-Erkennung fängt zusätzlich Ad-hoc-Calls ohne Termin ab – kann aber bei Headsets fehlauslösen, die das Mikro dauerhaft aktiv halten.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
