@@ -251,6 +251,12 @@ final class Tracker: ObservableObject {
         let needConfirm = modeWantsPrompt && sessionDecision == .undecided
 
         if needConfirm {
+            // Ein laufender Call ist eindeutig Arbeit -> ohne Nachfrage starten.
+            if inCall {
+                if promptShowing { WorkPrompt.shared.close(); promptShowing = false }
+                commitActive(reason: "call")
+                return
+            }
             if !promptShowing { showStartPrompt(gapMinutes: gapMinutes) }
             // Wartet auf Bestätigung – noch keine echte Pause: "Bereit" statt "Pause".
             status = .off
