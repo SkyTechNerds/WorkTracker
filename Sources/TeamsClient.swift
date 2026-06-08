@@ -28,6 +28,14 @@ final class TeamsClient: ObservableObject {
     private var task: URLSessionWebSocketTask?
     private var enabled = false
     private var reconnectWork: DispatchWorkItem?
+    private var failureCount = 0
+    private var notifiedUnreachable = false
+
+    private func teamsRunning() -> Bool {
+        NSWorkspace.shared.runningApplications.contains {
+            ($0.bundleIdentifier?.lowercased().contains("com.microsoft.teams")) ?? false
+        }
+    }
 
     private var token: String {
         get { UserDefaults.standard.string(forKey: "teamsApiToken") ?? "" }
@@ -39,6 +47,8 @@ final class TeamsClient: ObservableObject {
     func start() {
         guard !enabled else { return }
         enabled = true
+        failureCount = 0
+        notifiedUnreachable = false
         connect()
     }
 
@@ -86,6 +96,8 @@ final class TeamsClient: ObservableObject {
                 switch result {
                 case .success(let message):
                     self.connected = true
+                    self.failureCount = 0
+                    self.notifiedUnreachable = false
                     switch message {
                     case .string(let s): self.handle(s)
                     case .data(let d): if let s = String(data: d, encoding: .utf8) { self.handle(s) }
@@ -132,6 +144,17 @@ final class TeamsClient: ObservableObject {
         task = nil
         guard enabled else { return }
         status = "Teams nicht erreichbar – neuer Versuch…"
+
+        // Wenn Teams läuft, der Port aber (auch nach kurzer Wartezeit) zu ist,
+        // ist meist die Drittanbieter-API nicht aktiviert -> einmalig Hinweis.
+        failureCount += 1
+        if failureCount >= 2, !notifiedUnreachable, teamsRunning() {
+            notifiedUnreachable = true
+            status = "Teams-API aus – in den Einstellungen aktivieren"
+            Notifier.post(title: "Teams-API nicht erreichbar",
+                          body: "In Teams die Drittanbieter-API aktivieren (Einstellungen → Datenschutz), damit Meetings automatisch erkannt werden.")
+        }
+
         reconnectWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             Task { @MainActor in self?.connect() }
