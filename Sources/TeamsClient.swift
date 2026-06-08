@@ -104,9 +104,16 @@ final class TeamsClient: ObservableObject {
             token = tok
             status = "gekoppelt"
         }
-        if let mu = obj["meetingUpdate"] as? [String: Any],
-           let ms = mu["meetingState"] as? [String: Any] {
-            isInMeeting = (ms["isInMeeting"] as? Bool) ?? false
+        if let mu = obj["meetingUpdate"] as? [String: Any] {
+            if let ms = mu["meetingState"] as? [String: Any], let inM = ms["isInMeeting"] as? Bool {
+                isInMeeting = inM
+            } else if let mp = mu["meetingPermissions"] as? [String: Any] {
+                // Neues Teams sendet ausserhalb eines Meetings nur Permissions.
+                // canLeave (bzw. canToggleMute) ist nur im Meeting true.
+                let canLeave = (mp["canLeave"] as? Bool) ?? false
+                let canMute = (mp["canToggleMute"] as? Bool) ?? false
+                isInMeeting = canLeave || canMute
+            }
             status = isInMeeting ? "im Meeting" : "verbunden"
         }
         if let err = obj["errorMsg"] as? String {
