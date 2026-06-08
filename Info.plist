@@ -24,6 +24,11 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Zeigt den Titel des laufenden Termins als Meeting-Namen an.</string>
 	<key>NSCalendarsUsageDescription</key>

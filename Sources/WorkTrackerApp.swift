@@ -54,6 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ein Call läuft (siehe CalendarLookup.currentEventTitle).
         tracker.start()
 
+        if configStore.config.detectCalls && configStore.config.detectTeamsApi {
+            TeamsClient.shared.start()
+        }
+
         // Beim Start und danach regelmäßig (alle 4 h) nach Updates suchen.
         checkForUpdates()
         updateTimer = Timer.scheduledTimer(withTimeInterval: 4 * 3600, repeats: true) { [weak self] _ in

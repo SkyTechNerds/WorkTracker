@@ -398,7 +398,13 @@ final class Tracker: ObservableObject {
     /// das aber bei manchen Headsets fehlauslöst -> standardmäßig aus.
     private func meetingLabel() -> String? {
         guard config.detectCalls else { return nil }
+        // 1) Teams-API (zuverlässig): isInMeeting -> Titel aus Kalender, sonst "Meeting".
+        if config.detectTeamsApi, TeamsClient.shared.isInMeeting {
+            return CalendarLookup.shared.currentEventTitle() ?? "Meeting"
+        }
+        // 2) Kalender-Termin (deckt geplante Meetings ab).
         if let title = CalendarLookup.shared.currentEventTitle(), !title.isEmpty { return title }
+        // 3) optional Mikrofon (Ad-hoc-Calls).
         if config.detectCallsViaMic, CallDetector.activeCall() != nil { return "Meeting" }
         return nil
     }

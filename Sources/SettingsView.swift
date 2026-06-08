@@ -33,6 +33,7 @@ struct SettingsView: View {
 struct GeneralSettingsView: View {
     @EnvironmentObject var configStore: ConfigStore
     @ObservedObject private var updater = Updater.shared
+    @ObservedObject private var teams = TeamsClient.shared
 
     var body: some View {
         Form {
@@ -66,10 +67,16 @@ struct GeneralSettingsView: View {
                 Toggle("Meetings erkennen (Kalender → „Meeting“)",
                        isOn: $configStore.config.detectCalls)
                 if configStore.config.detectCalls {
+                    Toggle("Teams-Meeting-Status (lokale Teams-API)",
+                           isOn: $configStore.config.detectTeamsApi)
+                    if configStore.config.detectTeamsApi {
+                        Text("Teams: \(teams.status). Beim ersten Mal in Teams die Drittanbieter-API erlauben und die Kopplung bestätigen.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Toggle("Zusätzlich per Mikrofon (Ad-hoc-Calls)",
                            isOn: $configStore.config.detectCallsViaMic)
                 }
-                Text("Erkennt Meetings primär über den laufenden Kalender-Termin (zuverlässig) und labelt die Zeit automatisch mit dem Termin-Namen. Die Mikrofon-Erkennung fängt zusätzlich Ad-hoc-Calls ohne Termin ab – kann aber bei Headsets fehlauslösen, die das Mikro dauerhaft aktiv halten.")
+                Text("Erkennt Meetings primär über den laufenden Kalender-Termin (zuverlässig) und labelt die Zeit automatisch mit dem Termin-Namen. Die Teams-API liest den echten Meeting-Status (auch Ad-hoc-Calls, hardware-unabhängig). Die Mikrofon-Erkennung kann bei Headsets fehlauslösen, die das Mikro/Audio dauerhaft aktiv halten.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -178,6 +185,9 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onChange(of: configStore.config.detectTeamsApi) { _, on in
+            if on { TeamsClient.shared.start() } else { TeamsClient.shared.stop() }
+        }
     }
 
     private let weekdayOrder: [(num: Int, short: String)] = [
