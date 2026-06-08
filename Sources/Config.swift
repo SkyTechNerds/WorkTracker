@@ -170,6 +170,9 @@ struct AppConfig: Codable, Equatable {
     var endDayOnSleep: Bool
     // Calls (Teams/Zoom/…) erkennen und als "Meeting" labeln.
     var detectCalls: Bool
+    // Updates: beim Start prüfen / gefundene Updates automatisch installieren.
+    var autoCheckUpdates: Bool
+    var autoInstallUpdates: Bool
     // Mitteilung bei neu erkanntem Ticket.
     var notifyTaskStart: Bool
     // Menueleisten-Icon.
@@ -206,6 +209,8 @@ struct AppConfig: Codable, Equatable {
             promptAfterBreakMinutes: 20,
             endDayOnSleep: true,
             detectCalls: true,
+            autoCheckUpdates: true,
+            autoInstallUpdates: false,
             notifyTaskStart: true,
             menuIcon: .briefcase,
             roundingMinutes: 0,
@@ -238,6 +243,8 @@ extension AppConfig {
         promptAfterBreakMinutes = try c.decodeIfPresent(Int.self, forKey: .promptAfterBreakMinutes) ?? d.promptAfterBreakMinutes
         endDayOnSleep = try c.decodeIfPresent(Bool.self, forKey: .endDayOnSleep) ?? d.endDayOnSleep
         detectCalls = try c.decodeIfPresent(Bool.self, forKey: .detectCalls) ?? d.detectCalls
+        autoCheckUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? d.autoCheckUpdates
+        autoInstallUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoInstallUpdates) ?? d.autoInstallUpdates
         notifyTaskStart = try c.decodeIfPresent(Bool.self, forKey: .notifyTaskStart) ?? d.notifyTaskStart
         menuIcon = try c.decodeIfPresent(MenuIconStyle.self, forKey: .menuIcon) ?? d.menuIcon
         roundingMinutes = try c.decodeIfPresent(Int.self, forKey: .roundingMinutes) ?? d.roundingMinutes

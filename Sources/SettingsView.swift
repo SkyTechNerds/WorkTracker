@@ -32,6 +32,7 @@ struct SettingsView: View {
 
 struct GeneralSettingsView: View {
     @EnvironmentObject var configStore: ConfigStore
+    @ObservedObject private var updater = Updater.shared
 
     var body: some View {
         Form {
@@ -147,6 +148,28 @@ struct GeneralSettingsView: View {
                        isOn: Binding(
                         get: { configStore.config.startAtLogin },
                         set: { setLogin($0) }))
+            }
+
+            Section("Updates") {
+                LabeledContent("Version", value: "v\(updater.currentVersion)")
+                Toggle("Beim Start nach Updates suchen", isOn: $configStore.config.autoCheckUpdates)
+                Toggle("Updates automatisch installieren", isOn: $configStore.config.autoInstallUpdates)
+                HStack {
+                    Button(updater.checking ? "Suche…" : "Jetzt prüfen") {
+                        Task { await updater.check(silent: false) }
+                    }
+                    .disabled(updater.checking)
+                    if let info = updater.available {
+                        Button(updater.installing ? "Installiere…" : "Update v\(info.version) installieren") {
+                            Task { await updater.installUpdate() }
+                        }
+                        .disabled(updater.installing)
+                    }
+                    Spacer()
+                }
+                if let msg = updater.statusMessage {
+                    Text(msg).font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)

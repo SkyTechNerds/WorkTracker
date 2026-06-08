@@ -32,6 +32,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Kalender-Zugriff NICHT beim Start anfragen – erst lazy, wenn wirklich
         // ein Call läuft (siehe CalendarLookup.currentEventTitle).
         tracker.start()
+
+        if configStore.config.autoCheckUpdates {
+            let autoInstall = configStore.config.autoInstallUpdates
+            Task {
+                await Updater.shared.check(silent: true)
+                if Updater.shared.available != nil, autoInstall {
+                    await Updater.shared.installUpdate()
+                }
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -111,11 +121,20 @@ struct MenuBarLabel: View {
 /// Inhalt des Menueleisten-Menues.
 struct MenuContentView: View {
     @ObservedObject var tracker: Tracker
+    @ObservedObject private var updater = Updater.shared
     @EnvironmentObject var configStore: ConfigStore
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         statusHeader
+
+        if let info = updater.available {
+            Divider()
+            Button(updater.installing ? "Installiere v\(info.version)…" : "⬆︎ Update auf v\(info.version) installieren") {
+                Task { await updater.installUpdate() }
+            }
+            .disabled(updater.installing)
+        }
 
         Divider()
 
@@ -150,6 +169,13 @@ struct MenuContentView: View {
         }
 
         Divider()
+
+        if updater.available == nil {
+            Button(updater.checking ? "Suche Updates…" : "Nach Updates suchen") {
+                Task { await updater.check(silent: false) }
+            }
+            .disabled(updater.checking)
+        }
 
         Button("Einstellungen…") {
             AppActivation.showWindow { openWindow(id: "settings") }
