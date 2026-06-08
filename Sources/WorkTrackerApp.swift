@@ -18,12 +18,33 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let configStore: ConfigStore
     let tracker: Tracker
+    private var updateTimer: Timer?
+    private var lastNotifiedUpdate: String?
 
     override init() {
         let cs = ConfigStore()
         configStore = cs
         tracker = Tracker(configStore: cs)
         super.init()
+    }
+
+    /// Prüft auf Updates; installiert automatisch nur, wenn aktiviert UND der
+    /// Nutzer gerade nicht arbeitet/im Call ist (sonst nur Hinweis + Mitteilung).
+    private func checkForUpdates() {
+        guard configStore.config.autoCheckUpdates else { return }
+        let beta = configStore.config.betaUpdates
+        let autoInstall = configStore.config.autoInstallUpdates
+        Task {
+            await Updater.shared.check(silent: true, beta: beta)
+            guard let info = Updater.shared.available else { return }
+            let busy = (tracker.status == .active) || tracker.inCall
+            if autoInstall && !busy {
+                await Updater.shared.installUpdate()
+            } else if lastNotifiedUpdate != info.version {
+                lastNotifiedUpdate = info.version
+                Notifier.post(title: "Update verfügbar", body: "WorkTracker v\(info.version)")
+            }
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -33,15 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ein Call läuft (siehe CalendarLookup.currentEventTitle).
         tracker.start()
 
-        if configStore.config.autoCheckUpdates {
-            let autoInstall = configStore.config.autoInstallUpdates
-            let beta = configStore.config.betaUpdates
-            Task {
-                await Updater.shared.check(silent: true, beta: beta)
-                if Updater.shared.available != nil, autoInstall {
-                    await Updater.shared.installUpdate()
-                }
-            }
+        // Beim Start und danach regelmäßig (alle 4 h) nach Updates suchen.
+        checkForUpdates()
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 4 * 3600, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkForUpdates() }
         }
     }
 
