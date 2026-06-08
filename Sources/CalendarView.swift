@@ -64,6 +64,12 @@ struct CalendarView: View {
         .navigationTitle(titleText)
         .onAppear(perform: reload)
         .onChange(of: selectedDate) { _, _ in reload() }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+            // Live halten (Tail wächst), aber nicht während eines offenen Dialogs.
+            if editorTarget == nil && deletingBreak == nil && assigningGroup == nil {
+                reload()
+            }
+        }
         .sheet(item: $editorTarget) { target in
             SegmentEditorView(
                 date: selectedDate,
@@ -302,13 +308,19 @@ struct CalendarView: View {
     }
 
     private var summaryBar: some View {
-        let s = dayStore.summary(date: selectedDate)
+        // Aus DERSELBEN Segmentliste rechnen wie das Ticket-Panel (sonst driften
+        // obere Summe und Panel um die seit dem Laden verstrichene Zeit auseinander).
+        let worked = segments.filter { $0.kind == .work }.reduce(0.0) { $0 + $1.duration }
+        let brk = segments.filter { $0.kind == .breakTime }.reduce(0.0) { $0 + $1.duration }
+        let start = segments.map(\.start).min()
+        let end = segments.map(\.end).max()
+        let r = configStore.config.roundingMinutes
         return HStack(spacing: 16) {
-            Label(rangeText(s), systemImage: "clock")
-            Label(Fmt.hm(s.workedSeconds), systemImage: "briefcase")
-            Label(Fmt.hm(s.breakSeconds), systemImage: "cup.and.saucer")
-                .foregroundStyle(s.breakSeconds > Double(configStore.config.breakCapMinutes) * 60 ? .orange : .secondary)
-            if s.materialized {
+            Label("\(start.map(Fmt.clock) ?? "–") – \(end.map(Fmt.clock) ?? "–")", systemImage: "clock")
+            Label(Fmt.hm(worked, roundTo: r), systemImage: "briefcase")
+            Label(Fmt.hm(brk), systemImage: "cup.and.saucer")
+                .foregroundStyle(brk > Double(configStore.config.breakCapMinutes) * 60 ? .orange : .secondary)
+            if dayStore.isMaterialized(selectedDate) {
                 Label("manuell korrigiert", systemImage: "pencil")
                     .foregroundStyle(.secondary)
             }
@@ -318,12 +330,6 @@ struct CalendarView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.bar)
-    }
-
-    private func rangeText(_ s: DaySummary) -> String {
-        let a = s.start.map(Fmt.clock) ?? "–"
-        let b = s.end.map(Fmt.clock) ?? "–"
-        return "\(a) – \(b)"
     }
 
     // MARK: - Toolbar
