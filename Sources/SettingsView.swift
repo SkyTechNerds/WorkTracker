@@ -62,6 +62,10 @@ struct GeneralSettingsView: View {
                     LabeledContent("Pausen-Warnung ab",
                                    value: "\(configStore.config.breakCapMinutes) min")
                 }
+                Toggle("Calls erkennen (Teams/Zoom → „Meeting“)",
+                       isOn: $configStore.config.detectCalls)
+                Text("Erkennt laufende Calls über aktives Mikrofon + geöffnete Call-App und labelt die Zeit automatisch als „Meeting“. Verhindert auch, dass ein Call ohne Tastatur-Input als Pause zählt.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Kalender-Ansicht") {

@@ -35,10 +35,12 @@ struct Event: Codable, Identifiable {
     var branch: String?
     /// Aus dem Branch geparstes Ticket (z. B. WCMS-2155).
     var ticket: String?
+    /// Name der laufenden Call-App (Teams/Zoom/…), falls gerade ein Call läuft.
+    var call: String?
 
     init(ts: Date, type: EventType, reason: String? = nil,
          app: String? = nil, repo: String? = nil,
-         branch: String? = nil, ticket: String? = nil) {
+         branch: String? = nil, ticket: String? = nil, call: String? = nil) {
         self.ts = ts
         self.type = type
         self.reason = reason
@@ -46,6 +48,7 @@ struct Event: Codable, Identifiable {
         self.repo = repo
         self.branch = branch
         self.ticket = ticket
+        self.call = call
     }
 }
 

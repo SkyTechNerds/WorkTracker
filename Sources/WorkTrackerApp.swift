@@ -167,6 +167,10 @@ struct MenuContentView: View {
         case .ended:
             Text("✓ Feierabend")
         }
+        if tracker.inCall {
+            Text("📞 Call läuft\(tracker.callAppName.map { " (\($0))" } ?? "")")
+                .foregroundStyle(.secondary)
+        }
         if let start = dayStart {
             Text("Arbeitsbeginn: \(Fmt.clock(start))")
                 .foregroundStyle(.secondary)

@@ -33,6 +33,8 @@ final class Tracker: ObservableObject {
     @Published var currentRepo: String?
     @Published var todaySummary: DaySummary?
     @Published var dayEnded = false   // Feierabend fuer heute gesetzt
+    @Published var inCall = false     // laufender Call erkannt
+    @Published var callAppName: String?
 
     var statusSymbol: String {
         let icon = configStore.config.menuIcon
@@ -207,7 +209,12 @@ final class Tracker: ObservableObject {
         }
         let threshold = TimeInterval(max(1, config.idleThresholdMinutes) * 60)
         let idle = idleSeconds()
-        let desired = !screenLocked && !screenAsleep && idle < threshold
+        // Call erkennen: ein laufender Call zählt als aktiv, auch ohne Tastatur-
+        // Input (sonst würde ein Meeting fälschlich als Pause erkannt).
+        let callApp = config.detectCalls ? CallDetector.activeCall() : nil
+        inCall = (callApp != nil)
+        callAppName = callApp
+        let desired = !screenLocked && !screenAsleep && (idle < threshold || inCall)
 
         // Kein Zustandswechsel noetig.
         if desired == currentlyActive { return }
@@ -369,8 +376,13 @@ final class Tracker: ObservableObject {
             Notifier.post(title: "Aufgabe: \(t)", body: repoName)
         }
 
+        let callApp = config.detectCalls ? CallDetector.activeCall() : nil
+        inCall = (callApp != nil)
+        callAppName = callApp
+
         log(Event(ts: Date(), type: .sample, app: app,
-                  repo: bestRepo?.name, branch: bestRepo?.branch, ticket: bestRepo?.ticket))
+                  repo: bestRepo?.name, branch: bestRepo?.branch,
+                  ticket: bestRepo?.ticket, call: callApp))
     }
 
     // MARK: - Helpers

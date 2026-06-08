@@ -113,20 +113,46 @@ final class DayStore {
         }
         guard !workIntervals.isEmpty else { return [] }
 
-        // Ticket je Arbeitsintervall: haeufigstes Ticket der Sample-Events darin.
-        func ticket(in start: Date, _ end: Date) -> String? {
-            var counts: [String: Int] = [:]
-            for ev in events where ev.type == .sample {
-                guard ev.ts >= start, ev.ts <= end, let t = ev.ticket else { continue }
-                counts[t, default: 0] += 1
+        // Ein Arbeitsintervall wird nach Call-Status aufgeteilt: Phasen mit
+        // laufendem Call werden als "Meeting" gelabelt (Notiz = App), die
+        // restlichen Phasen bekommen das häufigste Ticket der Samples.
+        func workSegments(_ start: Date, _ end: Date) -> [Segment] {
+            let inRange = events.filter { $0.type == .sample && $0.ts >= start && $0.ts <= end }
+                .sorted { $0.ts < $1.ts }
+            func ticketFor(_ a: Date, _ b: Date) -> String? {
+                var counts: [String: Int] = [:]
+                for ev in inRange where ev.ts >= a && ev.ts <= b && ev.call == nil {
+                    if let t = ev.ticket { counts[t, default: 0] += 1 }
+                }
+                return counts.max(by: { $0.value < $1.value })?.key
             }
-            return counts.max(by: { $0.value < $1.value })?.key
+            func makeSeg(_ a: Date, _ b: Date, call: String?) -> Segment {
+                if let call {
+                    return Segment(start: a, end: b, kind: .work, ticket: "Meeting",
+                                   note: call, source: .auto)
+                }
+                return Segment(start: a, end: b, kind: .work, ticket: ticketFor(a, b),
+                               note: nil, source: .auto)
+            }
+            guard !inRange.isEmpty else { return [makeSeg(start, end, call: nil)] }
+
+            var subs: [Segment] = []
+            var segStart = start
+            var state: String? = inRange.first?.call
+            for ev in inRange {
+                if ev.call != state {
+                    if ev.ts > segStart { subs.append(makeSeg(segStart, ev.ts, call: state)) }
+                    segStart = ev.ts
+                    state = ev.call
+                }
+            }
+            if end > segStart { subs.append(makeSeg(segStart, end, call: state)) }
+            return subs
         }
 
         var segments: [Segment] = []
         for (i, iv) in workIntervals.enumerated() {
-            segments.append(Segment(start: iv.0, end: iv.1, kind: .work,
-                                    ticket: ticket(in: iv.0, iv.1), note: nil, source: .auto))
+            segments.append(contentsOf: workSegments(iv.0, iv.1))
             // Pause = Luecke bis zum naechsten Arbeitsintervall.
             if i + 1 < workIntervals.count {
                 let gapStart = iv.1

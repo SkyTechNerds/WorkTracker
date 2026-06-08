@@ -168,6 +168,8 @@ struct AppConfig: Codable, Equatable {
     var promptAfterBreakMinutes: Int
     // Zuklappen/Standby (System-Sleep) zählt als Feierabend (statt nur Pause).
     var endDayOnSleep: Bool
+    // Calls (Teams/Zoom/…) erkennen und als "Meeting" labeln.
+    var detectCalls: Bool
     // Mitteilung bei neu erkanntem Ticket.
     var notifyTaskStart: Bool
     // Menueleisten-Icon.
@@ -198,6 +200,7 @@ struct AppConfig: Codable, Equatable {
             promptMode: .afterBreaks,
             promptAfterBreakMinutes: 20,
             endDayOnSleep: true,
+            detectCalls: true,
             notifyTaskStart: true,
             menuIcon: .briefcase,
             roundingMinutes: 0,
@@ -226,6 +229,7 @@ extension AppConfig {
         workdayEndHour = try c.decodeIfPresent(Int.self, forKey: .workdayEndHour) ?? d.workdayEndHour
         promptAfterBreakMinutes = try c.decodeIfPresent(Int.self, forKey: .promptAfterBreakMinutes) ?? d.promptAfterBreakMinutes
         endDayOnSleep = try c.decodeIfPresent(Bool.self, forKey: .endDayOnSleep) ?? d.endDayOnSleep
+        detectCalls = try c.decodeIfPresent(Bool.self, forKey: .detectCalls) ?? d.detectCalls
         notifyTaskStart = try c.decodeIfPresent(Bool.self, forKey: .notifyTaskStart) ?? d.notifyTaskStart
         menuIcon = try c.decodeIfPresent(MenuIconStyle.self, forKey: .menuIcon) ?? d.menuIcon
         roundingMinutes = try c.decodeIfPresent(Int.self, forKey: .roundingMinutes) ?? d.roundingMinutes
