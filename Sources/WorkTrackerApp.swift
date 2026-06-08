@@ -216,8 +216,6 @@ struct MenuContentView: View {
             Text("● Arbeit läuft")
             if let t = tracker.currentTicket {
                 Text("Ticket: \(t)").foregroundStyle(.secondary)
-            } else if let r = tracker.currentRepo {
-                Text(r).foregroundStyle(.secondary)
             }
         case .paused:
             Text("◐ Pause seit \(Fmt.clock(tracker.stateSince))")
