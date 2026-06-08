@@ -1,0 +1,15 @@
+# Build-Artefakte
+WorkTracker.app/
+*.icns
+build/
+dist/
+
+# Verteilpakete
+*.zip
+
+# macOS
+.DS_Store
+
+# Editor
+.swiftpm/
+*.xcuserstate
