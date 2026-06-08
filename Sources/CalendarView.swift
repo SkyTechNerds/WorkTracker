@@ -347,19 +347,6 @@ struct CalendarView: View {
 
             Spacer()
 
-            if mode == .day {
-                Button {
-                    editorTarget = .new
-                } label: { Label("Eintrag", systemImage: "plus") }
-                    .help("Neuen Zeiteintrag hinzufügen")
-
-                if dayStore.isMaterialized(selectedDate) {
-                    Button {
-                        dayStore.resetToAuto(date: selectedDate); reload()
-                    } label: { Label("Auf Auto", systemImage: "arrow.uturn.backward") }
-                        .help("Automatisch erfasste Zeiten wiederherstellen (manuelle Korrekturen verwerfen)")
-                }
-            }
             if cal.isDateInToday(selectedDate) {
                 if tracker.dayEnded {
                     Button {
@@ -374,11 +361,28 @@ struct CalendarView: View {
                 }
             }
 
-            Button {
-                tracker.writeReport(for: selectedDate)
-                NSWorkspace.shared.open(reportURL)
-            } label: { Label("Bericht", systemImage: "doc.text") }
-                .help("Tagesbericht (Markdown) erzeugen und öffnen")
+            if mode == .day {
+                Button {
+                    editorTarget = .new
+                } label: { Label("Eintrag", systemImage: "plus") }
+                    .help("Neuen Zeiteintrag hinzufügen")
+            }
+
+            // Selteneres im Menü (Textlabels → eindeutig, vermeidet Überlauf).
+            Menu {
+                Button {
+                    tracker.writeReport(for: selectedDate)
+                    NSWorkspace.shared.open(reportURL)
+                } label: { Label("Tagesbericht öffnen", systemImage: "doc.text") }
+                if mode == .day && dayStore.isMaterialized(selectedDate) {
+                    Button {
+                        dayStore.resetToAuto(date: selectedDate); reload()
+                    } label: { Label("Auf Auto zurücksetzen", systemImage: "arrow.uturn.backward") }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .help("Weitere Aktionen (Bericht, Auf Auto)")
         }
     }
 
@@ -736,7 +740,7 @@ struct TicketAssignView: View {
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            TextField("Ticket oder Titel (z. B. WCMS-2155 oder „Meeting“)", text: $ticket)
+            TextField("Ticket oder Titel (z. B. PROJ-123 oder „Meeting“)", text: $ticket)
                 .textFieldStyle(.roundedBorder)
             if !suggestions.isEmpty {
                 HStack(spacing: 8) {

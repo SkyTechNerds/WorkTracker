@@ -67,7 +67,7 @@ struct SegmentEditorView: View {
                 DatePicker("Bis", selection: $end, displayedComponents: .hourAndMinute)
 
                 if kind == .work {
-                    TextField("Ticket oder Titel (z. B. WCMS-2155 oder „Meeting“)", text: $ticket)
+                    TextField("Ticket oder Titel (z. B. PROJ-123 oder „Meeting“)", text: $ticket)
                     if !ticketSuggestions.isEmpty {
                         HStack {
                             Text("Vorschläge:").foregroundStyle(.secondary).font(.caption)
