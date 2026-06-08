@@ -44,6 +44,7 @@ struct CalendarView: View {
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var segments: [Segment] = []
     @State private var editorTarget: EditorTarget?
+    @State private var deletingBreak: Segment?
     @State private var aiRunning = false
     @State private var aiMessage: String?
 
@@ -68,7 +69,13 @@ struct CalendarView: View {
                 segment: target.segment,
                 config: configStore.config,
                 onSave: { seg in upsert(seg) },
-                onDelete: target.segment.map { s in { delete(s) } })
+                onDelete: target.segment.map { s in { requestDelete(s) } })
+        }
+        .sheet(item: $deletingBreak) { brk in
+            DeleteBreakView(
+                breakSeg: brk,
+                onExtend: { until in extendOverDeletedBreak(brk, until: until) },
+                onJustDelete: { delete(brk) })
         }
         .alert("KI-Tätigkeiten", isPresented: Binding(
             get: { aiMessage != nil },
@@ -358,10 +365,12 @@ struct CalendarView: View {
     }
 
     /// Fuegt ein bearbeitetes/neues Segment ein und materialisiert den Tag.
+    /// Beim Bearbeiten einer Pause ziehen die angrenzenden Arbeitsblöcke mit.
     private func upsert(_ seg: Segment) {
         var list = segments
         if let idx = list.firstIndex(where: { $0.id == seg.id }) {
             list[idx] = seg
+            if seg.kind == .breakTime { coupleAroundBreak(&list, seg) }
         } else {
             var s = seg
             s.source = .manual
@@ -370,8 +379,69 @@ struct CalendarView: View {
         persist(list)
     }
 
+    /// Passt die zeitlich direkt angrenzenden Arbeitsblöcke an die (neuen)
+    /// Pausengrenzen an: davor endet die Arbeit am Pausenbeginn, danach beginnt
+    /// sie am Pausenende.
+    private func coupleAroundBreak(_ list: inout [Segment], _ brk: Segment) {
+        let sorted = list.sorted { $0.start < $1.start }
+        guard let pos = sorted.firstIndex(where: { $0.id == brk.id }) else { return }
+        if pos > 0 {
+            let prev = sorted[pos - 1]
+            if prev.kind == .work, let i = list.firstIndex(where: { $0.id == prev.id }),
+               brk.start > list[i].start {
+                list[i].end = brk.start
+            }
+        }
+        if pos < sorted.count - 1 {
+            let next = sorted[pos + 1]
+            if next.kind == .work, let j = list.firstIndex(where: { $0.id == next.id }),
+               brk.end < list[j].end {
+                list[j].start = brk.end
+            }
+        }
+    }
+
+    /// Löschen anstoßen: bei Pausen erst nachfragen (Arbeit verlängern?), sonst
+    /// direkt löschen.
+    private func requestDelete(_ seg: Segment) {
+        if seg.kind == .breakTime {
+            // Verzögern, damit der Editor-Sheet zuerst schließt.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                deletingBreak = seg
+            }
+        } else {
+            delete(seg)
+        }
+    }
+
     private func delete(_ seg: Segment) {
         persist(segments.filter { $0.id != seg.id })
+    }
+
+    /// Pause löschen und die davorliegende Arbeit bis `until` verlängern; reicht
+    /// sie an den nächsten Arbeitsblock heran, werden beide verschmolzen.
+    private func extendOverDeletedBreak(_ brk: Segment, until: Date) {
+        var list = segments
+        let sorted = list.sorted { $0.start < $1.start }
+        guard let pos = sorted.firstIndex(where: { $0.id == brk.id }) else { delete(brk); return }
+        let prev = pos > 0 ? sorted[pos - 1] : nil
+        let next = pos < sorted.count - 1 ? sorted[pos + 1] : nil
+
+        list.removeAll { $0.id == brk.id }
+
+        if let prev, prev.kind == .work, let i = list.firstIndex(where: { $0.id == prev.id }) {
+            list[i].end = max(list[i].start + 60, until)
+            if let next, next.kind == .work, let j = list.firstIndex(where: { $0.id == next.id }),
+               list[i].end >= list[j].start {
+                list[i].end = max(list[i].end, list[j].end)
+                if list[i].ticket == nil { list[i].ticket = list[j].ticket }
+                if (list[i].note ?? "").isEmpty { list[i].note = list[j].note }
+                list.remove(at: j)
+            }
+        } else if let next, next.kind == .work, let j = list.firstIndex(where: { $0.id == next.id }) {
+            list[j].start = min(list[j].end - 60, brk.start)
+        }
+        persist(list)
     }
 
     private func persist(_ list: [Segment]) {
@@ -515,5 +585,47 @@ struct WeekView: View {
             }
         }
         .padding(16)
+    }
+}
+
+// MARK: - Pause löschen (mit Verlängern-Option)
+
+struct DeleteBreakView: View {
+    let breakSeg: Segment
+    let onExtend: (Date) -> Void
+    let onJustDelete: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var until: Date
+
+    init(breakSeg: Segment, onExtend: @escaping (Date) -> Void, onJustDelete: @escaping () -> Void) {
+        self.breakSeg = breakSeg
+        self.onExtend = onExtend
+        self.onJustDelete = onJustDelete
+        _until = State(initialValue: breakSeg.end)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Pause löschen").font(.headline)
+            Text("Soll die Arbeit die gelöschte Pause füllen? Gib an, bis wann gearbeitet wurde — vorausgefüllt mit dem Pausenende (\(Fmt.clock(breakSeg.end))).")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            DatePicker("Arbeit ging bis", selection: $until, displayedComponents: .hourAndMinute)
+
+            Divider()
+            HStack {
+                Button("Abbrechen") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Nur Pause löschen") { onJustDelete(); dismiss() }
+                Button("Arbeit verlängern") { onExtend(until); dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
     }
 }
