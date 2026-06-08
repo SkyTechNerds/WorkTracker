@@ -87,10 +87,11 @@ struct CalendarView: View {
         .sheet(item: $assigningGroup) { g in
             TicketAssignView(
                 group: g.key,
-                available: groupSeconds(g.key),
+                rangeStart: groupRange(g.key)?.start ?? selectedDate,
+                rangeEnd: groupRange(g.key)?.end ?? selectedDate,
                 suggestions: ticketSuggestions,
                 currentNote: noteForGroup(g.key),
-                onSave: { t, n, dur in assignTicket(group: g.key, ticket: t, note: n, durationSeconds: dur) })
+                onSave: { t, n, s, e in assignTicket(group: g.key, ticket: t, note: n, start: s, end: e) })
         }
         .alert("KI-Tätigkeiten", isPresented: Binding(
             get: { aiMessage != nil },
@@ -513,26 +514,24 @@ struct CalendarView: View {
         }?.note
     }
 
-    private func groupSeconds(_ key: String) -> TimeInterval {
-        segments.filter { $0.kind == .work && ($0.ticket ?? UnassignedLabel) == key }
-            .reduce(0) { $0 + $1.duration }
+    /// Zeitspanne (frühester Start … spätestes Ende) der Gruppe – für die Von/Bis-Vorbelegung.
+    private func groupRange(_ key: String) -> (start: Date, end: Date)? {
+        let work = segments.filter { $0.kind == .work && ($0.ticket ?? UnassignedLabel) == key }
+        guard let s = work.map(\.start).min(), let e = work.map(\.end).max() else { return nil }
+        return (s, e)
     }
 
-    /// Weist Arbeitsblöcken einer Gruppe ein Ticket (+ Notiz) zu. Mit
-    /// `durationSeconds` wird nur dieser Anteil (vom frühesten Block an)
-    /// zugewiesen und ggf. ein Block geteilt; der Rest bleibt in der Gruppe.
-    private func assignTicket(group: String, ticket: String, note: String, durationSeconds: TimeInterval?) {
+    /// Weist einer Gruppe ein Ticket (+ Notiz) zu. Ohne Zeitbereich = ganze
+    /// Gruppe umbenennen. Mit Von/Bis wird nur dieser Zeitbereich zugewiesen
+    /// (überlappende Blöcke werden geteilt, Rest bleibt in der Gruppe).
+    private func assignTicket(group: String, ticket: String, note: String, start: Date?, end: Date?) {
         let t = ticket.trimmingCharacters(in: .whitespacesAndNewlines)
         let n = note.trimmingCharacters(in: .whitespacesAndNewlines)
         var list = segments
-        let targets = list.indices
-            .filter { list[$0].kind == .work && (list[$0].ticket ?? UnassignedLabel) == group }
-            .sorted { list[$0].start < list[$1].start }
-        let total = targets.reduce(0.0) { $0 + list[$1].duration }
 
-        // Volle Zuweisung (kein bzw. voller Dauerwert).
-        guard let dur = durationSeconds, dur > 0, dur < total - 1 else {
-            for i in targets {
+        // Ganze Gruppe (kein Bereich) -> einfach umbenennen.
+        guard let from = start, let to = end, to > from else {
+            for i in list.indices where list[i].kind == .work && (list[i].ticket ?? UnassignedLabel) == group {
                 list[i].ticket = t.isEmpty ? nil : t
                 if !n.isEmpty { list[i].note = n }
             }
@@ -540,31 +539,24 @@ struct CalendarView: View {
             return
         }
 
-        // Teil-Zuweisung: vom frühesten Block an `dur` Sekunden zuweisen.
-        var remaining = dur
-        var added: [Segment] = []
-        for i in targets {
-            if remaining <= 0 { break }
-            let seg = list[i]
-            if seg.duration <= remaining + 1 {
-                list[i].ticket = t.isEmpty ? nil : t
-                if !n.isEmpty { list[i].note = n }
-                remaining -= seg.duration
-            } else {
-                let cut = seg.start.addingTimeInterval(remaining)
-                var assigned = seg
-                assigned.id = UUID()
-                assigned.end = cut
-                assigned.ticket = t.isEmpty ? nil : t
-                assigned.note = n.isEmpty ? seg.note : n
-                assigned.source = .manual
-                list[i].start = cut          // Restblock bleibt in der Gruppe
-                added.append(assigned)
-                remaining = 0
-            }
+        // Bereich [from, to]: überlappende Blöcke der Gruppe teilen.
+        func part(_ s: Segment, _ a: Date, _ b: Date) -> Segment {
+            var c = s; c.id = UUID(); c.start = a; c.end = b; return c
         }
-        list.append(contentsOf: added)
-        persist(list)
+        var result: [Segment] = []
+        for s in list {
+            guard s.kind == .work, (s.ticket ?? UnassignedLabel) == group else { result.append(s); continue }
+            let a = max(s.start, from), b = min(s.end, to)
+            if a >= b { result.append(s); continue }                 // keine Überlappung
+            if s.start < a { result.append(part(s, s.start, a)) }    // davor bleibt Gruppe
+            var mid = part(s, a, b)                                  // Mitte -> Ticket
+            mid.ticket = t.isEmpty ? nil : t
+            if !n.isEmpty { mid.note = n }
+            mid.source = .manual
+            result.append(mid)
+            if s.end > b { result.append(part(s, b, s.end)) }        // danach bleibt Gruppe
+        }
+        persist(result)
     }
 
     private func persist(_ list: [Segment]) {
@@ -773,39 +765,38 @@ struct DeleteBreakView: View {
 
 struct TicketAssignView: View {
     let group: String
-    let available: TimeInterval
+    let rangeStart: Date
+    let rangeEnd: Date
     let suggestions: [String]
-    let onSave: (String, String, TimeInterval?) -> Void
+    let onSave: (String, String, Date?, Date?) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var ticket: String
     @State private var note: String
-    @State private var minutes: Int
-    private let fullMinutes: Int
+    @State private var useRange: Bool
+    @State private var von: Date
+    @State private var bis: Date
 
-    init(group: String, available: TimeInterval, suggestions: [String],
-         currentNote: String?, onSave: @escaping (String, String, TimeInterval?) -> Void) {
+    init(group: String, rangeStart: Date, rangeEnd: Date, suggestions: [String],
+         currentNote: String?, onSave: @escaping (String, String, Date?, Date?) -> Void) {
         self.group = group
-        self.available = available
+        self.rangeStart = rangeStart
+        self.rangeEnd = rangeEnd
         self.suggestions = suggestions
         self.onSave = onSave
-        let full = max(0, Int((available / 60).rounded()))
-        self.fullMinutes = full
-        _minutes = State(initialValue: full)
         _ticket = State(initialValue: group == UnassignedLabel ? "" : group)
         _note = State(initialValue: currentNote ?? "")
+        _von = State(initialValue: rangeStart)
+        _bis = State(initialValue: rangeEnd)
+        // Nur bei "Nicht zugewiesen" einen Teilbereich anbieten.
+        _useRange = State(initialValue: group == UnassignedLabel)
     }
 
-    /// Dauer-Aufteilung nur sinnvoll beim Zuordnen von „Ohne Ticket"-Zeit.
-    private var allowDuration: Bool { group == UnassignedLabel && fullMinutes > 0 }
+    private var isUnassigned: Bool { group == UnassignedLabel }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(group == UnassignedLabel ? "Ticket zuweisen" : "Ticket bearbeiten")
-                .font(.headline)
-            Text("Gilt für \(group == UnassignedLabel ? "die nicht zugeordnete Zeit" : "alle Blöcke von \(group)") an diesem Tag.")
-                .font(.callout).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(isUnassigned ? "Ticket zuweisen" : "Ticket bearbeiten").font(.headline)
 
             TextField("Ticket oder Titel (z. B. PROJ-123 oder „Meeting“)", text: $ticket)
                 .textFieldStyle(.roundedBorder)
@@ -821,22 +812,25 @@ struct TicketAssignView: View {
                 Text("Beschreibung (mehrzeilig, Markdown möglich)")
                     .font(.caption).foregroundStyle(.secondary)
                 TextEditor(text: $note)
-                    .frame(minHeight: 80)
+                    .frame(minHeight: 70)
                     .font(.body)
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
             }
 
-            if allowDuration {
+            if isUnassigned {
                 Divider()
-                Stepper(value: $minutes, in: 0...fullMinutes, step: 5) {
-                    LabeledContent("Dauer für dieses Ticket",
-                                   value: Fmt.hm(Double(minutes * 60)))
+                Toggle("Nur einen Zeitbereich zuweisen", isOn: $useRange)
+                if useRange {
+                    HStack {
+                        DatePicker("Von", selection: $von, displayedComponents: .hourAndMinute)
+                        DatePicker("Bis", selection: $bis, displayedComponents: .hourAndMinute)
+                    }
+                    Text("Setze Start/Ende direkt (auch tippbar). Der Rest der Zeit bleibt „\(UnassignedLabel)“.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Text("Verfügbar: \(Fmt.hm(Double(fullMinutes * 60))). Weniger wählen → der Rest bleibt „Ohne Ticket“ (z. B. für Arbeit ohne GitHub-Commit wie Figma).")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Divider()
@@ -845,14 +839,16 @@ struct TicketAssignView: View {
                 Button("Abbrechen") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("Sichern") {
-                    let dur: TimeInterval? = (allowDuration && minutes < fullMinutes)
-                        ? Double(minutes * 60) : nil
+                    let useR = isUnassigned && useRange
+                    let s: Date? = useR ? von : nil
+                    let e: Date? = useR ? bis : nil
                     let t = ticket, n = note, f = onSave
                     dismiss()
-                    DispatchQueue.main.async { f(t, n, dur) }
+                    DispatchQueue.main.async { f(t, n, s, e) }
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
+                .disabled(isUnassigned && useRange && bis <= von)
             }
         }
         .padding(20)

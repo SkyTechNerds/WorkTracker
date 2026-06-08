@@ -204,7 +204,7 @@ final class DayStore {
         if isMaterialized(date), let data = try? Data(contentsOf: editsURL(date)),
            let stored = try? decoder.decode([Segment].self, from: data) {
             guard Calendar.current.isDateInToday(date) else {
-                return stored.sorted { $0.start < $1.start }
+                return clipOverlaps(stored)
             }
             // Heute: hinter dem letzten korrigierten Zeitpunkt live weiterlaufen.
             let cutoff = stored.map(\.end).max() ?? Calendar.current.startOfDay(for: date)
@@ -215,9 +215,22 @@ final class DayStore {
             }
             // Fortsetzung desselben Blocks (z. B. laufendes Meeting) an den
             // bearbeiteten Block anhängen statt einen neuen zu erzeugen.
-            return coalesce((stored + tail).sorted { $0.start < $1.start })
+            return clipOverlaps(coalesce(stored + tail))
         }
-        return coalesce(deriveSegments(date: date, now: now))
+        return clipOverlaps(coalesce(deriveSegments(date: date, now: now)))
+    }
+
+    /// Stellt sicher, dass sich Segmente zeitlich NICHT überlappen (sonst
+    /// stapeln sie sich in der Timeline). Spätere Segmente werden auf das Ende
+    /// des vorherigen geclippt; zu kurz gewordene fallen weg.
+    private func clipOverlaps(_ segs: [Segment]) -> [Segment] {
+        var out: [Segment] = []
+        var lastEnd: Date?
+        for var s in segs.sorted(by: { $0.start < $1.start }) {
+            if let le = lastEnd, s.start < le { s.start = le }
+            if s.end > s.start { out.append(s); lastEnd = s.end }
+        }
+        return out
     }
 
     /// Identität eines Segments fürs Verschmelzen: gleiche Notiz (z. B.
