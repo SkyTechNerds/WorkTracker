@@ -385,10 +385,11 @@ final class Tracker: ObservableObject {
         let callApp = config.detectCalls ? CallDetector.activeCall() : nil
         inCall = (callApp != nil)
         callAppName = callApp
-        // Namen aus dem laufenden Kalender-Termin ergänzen, falls vorhanden.
-        var callLabel = callApp
-        if let a = callApp, let title = CalendarLookup.shared.currentEventTitle(), !title.isEmpty {
-            callLabel = "\(title) · \(a)"
+        // Stabiles Segment-Label: Kalender-Titel, sonst generisch "Meeting".
+        // NICHT der App-Name (wechselt je nach Vordergrund-App -> Splitter-Chaos).
+        var callLabel: String? = nil
+        if callApp != nil {
+            callLabel = CalendarLookup.shared.currentEventTitle() ?? "Meeting"
         }
 
         log(Event(ts: Date(), type: .sample, app: app,

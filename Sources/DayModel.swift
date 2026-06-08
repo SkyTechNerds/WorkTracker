@@ -128,8 +128,10 @@ final class DayStore {
             }
             func makeSeg(_ a: Date, _ b: Date, call: String?) -> Segment {
                 if let call {
+                    // call ist Kalender-Titel oder generisch "Meeting".
+                    let note = call == "Meeting" ? nil : call
                     return Segment(start: a, end: b, kind: .work, ticket: "Meeting",
-                                   note: call, source: .auto)
+                                   note: note, source: .auto)
                 }
                 return Segment(start: a, end: b, kind: .work, ticket: ticketFor(a, b),
                                note: nil, source: .auto)
