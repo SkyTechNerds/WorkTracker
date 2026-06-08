@@ -370,9 +370,13 @@ final class Tracker: ObservableObject {
         guard currentlyActive else { return }
         let app = NSWorkspace.shared.frontmostApplication?.localizedName
 
+        // Nur Projekte mit FRISCHER Git-Aktivität zuordnen (sonst würde das
+        // zuletzt irgendwann getouchte Repo dauerhaft als "aktiv" gelten).
+        let recency: TimeInterval = 30 * 60
         var bestRepo: (name: String, branch: String?, ticket: String?, when: Date)?
         for p in config.projects {
-            guard let when = GitProbe.lastActivity(p.repoPath) else { continue }
+            guard let when = GitProbe.lastActivity(p.repoPath),
+                  Date().timeIntervalSince(when) < recency else { continue }
             if bestRepo == nil || when > bestRepo!.when {
                 let branch = GitProbe.currentBranch(p.repoPath)
                 bestRepo = (p.name, branch, GitProbe.ticket(fromBranch: branch), when)
@@ -424,7 +428,7 @@ final class Tracker: ObservableObject {
         } else if wasInMeeting {
             let start = meetingStartedAt ?? Date()
             let end = Date()
-            if config.askMeetingTitle, !meetingHadTitle, end.timeIntervalSince(start) >= 120 {
+            if config.askMeetingTitle, !meetingHadTitle, end.timeIntervalSince(start) >= 60 {
                 let info = "Wie hieß der Call von \(Fmt.clock(start))–\(Fmt.clock(end))? (Default „Meeting“)"
                 MeetingTitlePrompt.shared.show(prefill: "Meeting", info: info) { [weak self] title in
                     self?.renameMeeting(start: start, end: end, title: title)
