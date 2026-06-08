@@ -641,40 +641,44 @@ struct DayTimelineView: View {
     private func blockView(_ seg: Segment, width: CGFloat) -> some View {
         let h = max(16, CGFloat(seg.duration) / 3600 * hourHeight)
         let isWork = seg.kind == .work
+        let title = isWork ? (seg.ticket ?? "Arbeit") : "Pause"
         Button {
             onTap(seg)
         } label: {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isWork ? Color.accentColor.opacity(0.85) : Color.secondary.opacity(0.25))
-                .frame(width: max(40, width), height: h)
-                .overlay(alignment: .topLeading) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 4) {
-                            if seg.source == .manual {
-                                Image(systemName: "pencil").font(.caption2)
-                            }
-                            Text(isWork ? (seg.ticket ?? "Arbeit") : "Pause")
-                                .font(.caption).bold()
-                            Spacer()
-                            Text("\(Fmt.clock(seg.start))–\(Fmt.clock(seg.end))")
-                                .font(.caption2)
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isWork ? Color.accentColor.opacity(0.85) : Color.secondary.opacity(0.25))
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        if seg.source == .manual {
+                            Image(systemName: "pencil").font(.caption2)
                         }
-                        if let n = seg.note, !n.isEmpty {
-                            Text(n).font(.caption2).lineLimit(1)
+                        Text(title).font(.caption).bold().lineLimit(1)
+                        Spacer(minLength: 4)
+                        if h >= 28 {
+                            Text("\(Fmt.clock(seg.start))–\(Fmt.clock(seg.end))")
+                                .font(.caption2).lineLimit(1).layoutPriority(-1)
                         }
                     }
-                    .foregroundStyle(isWork ? Color.white : Color.primary)
-                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    // Notiz nur, wenn der Block hoch genug ist (sonst Überlauf).
+                    if h >= 40, let n = seg.note, !n.isEmpty {
+                        Text(n).font(.caption2).lineLimit(1).opacity(0.9)
+                    }
                 }
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(seg.source == .manual ? Color.white.opacity(0.9) : Color.clear,
-                                style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                )
-                .contentShape(Rectangle())
+                .foregroundStyle(isWork ? Color.white : Color.primary)
+                .padding(.horizontal, 6).padding(.vertical, 3)
+            }
+            .frame(width: max(40, width), height: h, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(seg.source == .manual ? Color.white.opacity(0.9) : Color.clear,
+                            style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Klicken zum Bearbeiten")
+        .help(seg.note.map { "\(title) — \($0)" } ?? title)
     }
 }
 
