@@ -707,10 +707,16 @@ struct DeleteBreakView: View {
                 Button("Abbrechen") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Nur Pause löschen") { onJustDelete(); dismiss() }
-                Button("Arbeit verlängern") { onExtend(until); dismiss() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
+                Button("Nur Pause löschen") {
+                    let f = onJustDelete; dismiss()
+                    DispatchQueue.main.async { f() }
+                }
+                Button("Arbeit verlängern") {
+                    let u = until, f = onExtend; dismiss()
+                    DispatchQueue.main.async { f(u) }
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
