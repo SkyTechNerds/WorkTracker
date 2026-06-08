@@ -115,6 +115,25 @@ struct GeneralSettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            Section("Überstunden") {
+                Stepper(value: $configStore.config.targetHoursPerDay, in: 0...24, step: 0.5) {
+                    LabeledContent("Soll-Stunden pro Arbeitstag",
+                                   value: Fmt.hours1(configStore.config.targetHoursPerDay))
+                }
+                Stepper(value: $configStore.config.overtimeStartBalanceHours, in: -1000...1000, step: 0.5) {
+                    LabeledContent("Startsaldo (Übertrag)",
+                                   value: Fmt.signedHM(hours: configStore.config.overtimeStartBalanceHours))
+                }
+                LabeledContent("Arbeitstage") {
+                    HStack(spacing: 4) {
+                        ForEach(weekdayOrder, id: \.num) { wd in
+                            Toggle(wd.short, isOn: weekdayBinding(wd.num))
+                                .toggleStyle(.button).controlSize(.small)
+                        }
+                    }
+                }
+            }
+
             Section("Darstellung") {
                 Picker("Menüleisten-Icon", selection: $configStore.config.menuIcon) {
                     ForEach(MenuIconStyle.allCases) { icon in
@@ -131,6 +150,20 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private let weekdayOrder: [(num: Int, short: String)] = [
+        (2, "Mo"), (3, "Di"), (4, "Mi"), (5, "Do"), (6, "Fr"), (7, "Sa"), (1, "So"),
+    ]
+
+    private func weekdayBinding(_ num: Int) -> Binding<Bool> {
+        Binding(
+            get: { configStore.config.workdayWeekdays.contains(num) },
+            set: { on in
+                var set = Set(configStore.config.workdayWeekdays)
+                if on { set.insert(num) } else { set.remove(num) }
+                configStore.config.workdayWeekdays = set.sorted()
+            })
     }
 
     private var promptModeHint: String {

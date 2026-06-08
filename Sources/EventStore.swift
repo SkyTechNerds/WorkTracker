@@ -98,6 +98,18 @@ final class EventStore {
         }
     }
 
+    /// Frühester Tag mit aufgezeichneten Events (aus den Dateinamen).
+    func earliestDay() -> Date? {
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: eventsDir.path) else { return nil }
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        let dates = files.filter { $0.hasSuffix(".jsonl") }
+            .compactMap { f.date(from: String($0.dropLast(6))) }
+        return dates.min()
+    }
+
     /// Liest alle Events eines Tages (sortiert nach Zeit).
     func load(date: Date) -> [Event] {
         let url = fileURL(for: date)

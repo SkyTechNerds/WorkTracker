@@ -26,6 +26,7 @@ final class Tracker: ObservableObject {
     let configStore: ConfigStore
     let eventStore: EventStore
     let dayStore: DayStore
+    let overtimeStore: OvertimeStore
 
     @Published var status: WorkStatus = .off
     @Published var stateSince: Date = Date()
@@ -68,6 +69,7 @@ final class Tracker: ObservableObject {
         let grace = TimeInterval(max(180, 2 * configStore.config.sampleIntervalSeconds))
         self.dayStore = DayStore(eventStore: eventStore, dailyDir: configStore.dailyDirURL,
                                  graceSeconds: grace)
+        self.overtimeStore = OvertimeStore(dir: configStore.outputURL)
     }
 
     private var config: AppConfig { configStore.config }

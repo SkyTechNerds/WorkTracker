@@ -29,6 +29,19 @@ enum Fmt {
         hm(roundedSeconds(seconds, toMinutes: m))
     }
 
+    /// "+6h 12m" / "−3h 05m" aus Stunden (für Salden).
+    static func signedHM(hours: Double) -> String {
+        let sign = hours < 0 ? "−" : "+"
+        let total = Int((abs(hours) * 3600).rounded())
+        let h = total / 3600, m = (total % 3600) / 60
+        return h > 0 ? "\(sign)\(h)h \(String(format: "%02d", m))m" : "\(sign)\(m)m"
+    }
+
+    /// "6,0h" Stunden mit einer Nachkommastelle.
+    static func hours1(_ hours: Double) -> String {
+        String(format: "%.1fh", hours).replacingOccurrences(of: ".", with: ",")
+    }
+
     /// "08:42" lokale Uhrzeit.
     static func clock(_ date: Date) -> String {
         let f = DateFormatter()

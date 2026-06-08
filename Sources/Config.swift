@@ -176,6 +176,11 @@ struct AppConfig: Codable, Equatable {
     var menuIcon: MenuIconStyle
     // Rundung der ausgewiesenen Zeiten in Minuten (0 = exakt, z. B. 15).
     var roundingMinutes: Int
+    // Überstunden-Konto: Soll-Stunden pro Arbeitstag, Arbeitstage (Wochentage,
+    // gregorianisch: 1=So…7=Sa), Startsaldo (Übertrag in Stunden).
+    var targetHoursPerDay: Double
+    var workdayWeekdays: [Int]
+    var overtimeStartBalanceHours: Double
     // KI-Taetigkeitsbeschreibung (OpenAI-kompatibel: Gemini/MiniMax/OpenAI).
     var aiEnabled: Bool
     var aiProvider: AIProvider
@@ -204,6 +209,9 @@ struct AppConfig: Codable, Equatable {
             notifyTaskStart: true,
             menuIcon: .briefcase,
             roundingMinutes: 0,
+            targetHoursPerDay: 8.0,
+            workdayWeekdays: [2, 3, 4, 5, 6],
+            overtimeStartBalanceHours: 0,
             aiEnabled: false,
             aiProvider: .gemini,
             aiBaseURL: AIProvider.gemini.baseURL,
@@ -233,6 +241,9 @@ extension AppConfig {
         notifyTaskStart = try c.decodeIfPresent(Bool.self, forKey: .notifyTaskStart) ?? d.notifyTaskStart
         menuIcon = try c.decodeIfPresent(MenuIconStyle.self, forKey: .menuIcon) ?? d.menuIcon
         roundingMinutes = try c.decodeIfPresent(Int.self, forKey: .roundingMinutes) ?? d.roundingMinutes
+        targetHoursPerDay = try c.decodeIfPresent(Double.self, forKey: .targetHoursPerDay) ?? d.targetHoursPerDay
+        workdayWeekdays = try c.decodeIfPresent([Int].self, forKey: .workdayWeekdays) ?? d.workdayWeekdays
+        overtimeStartBalanceHours = try c.decodeIfPresent(Double.self, forKey: .overtimeStartBalanceHours) ?? d.overtimeStartBalanceHours
         aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? d.aiEnabled
         aiBaseURL = try c.decodeIfPresent(String.self, forKey: .aiBaseURL) ?? d.aiBaseURL
         aiModel = try c.decodeIfPresent(String.self, forKey: .aiModel) ?? d.aiModel

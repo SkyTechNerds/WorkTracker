@@ -81,6 +81,13 @@ struct WorkTrackerApp: App {
         }
         .defaultSize(width: 880, height: 620)
 
+        Window("Überstunden", id: "overtime") {
+            OvertimeView(tracker: appDelegate.tracker, store: appDelegate.tracker.overtimeStore)
+                .environmentObject(appDelegate.configStore)
+                .onDisappear { AppActivation.updatePolicyAfterClose() }
+        }
+        .defaultSize(width: 640, height: 560)
+
         Window("Einstellungen", id: "settings") {
             SettingsView()
                 .environmentObject(appDelegate.configStore)
@@ -129,6 +136,9 @@ struct MenuContentView: View {
 
         Button("Kalender & Bericht öffnen") {
             AppActivation.showWindow { openWindow(id: "calendar") }
+        }
+        Button("Überstunden öffnen") {
+            AppActivation.showWindow { openWindow(id: "overtime") }
         }
         Button("Bericht jetzt aktualisieren") {
             tracker.writeReport()
