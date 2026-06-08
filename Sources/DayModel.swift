@@ -81,12 +81,13 @@ final class DayStore {
         let events = eventStore.load(date: date)
         guard !events.isEmpty else { return [] }
 
-        func isActiveStart(_ t: EventType) -> Bool {
-            t == .active || t == .unlock || t == .wake || t == .appStart
-        }
-        func isActiveEnd(_ t: EventType) -> Bool {
-            t == .inactive || t == .lock || t == .sleep || t == .appStop
-        }
+        // Arbeitszeit wird ausschliesslich durch die kanonischen Zustands-Events
+        // der State-Machine bestimmt: .active (nach Bestaetigung/Auto) bis
+        // .inactive. Lock/Unlock/Sleep/Wake/AppStart sind nur Eingangssignale
+        // und markieren KEINE Arbeitszeit (sonst zaehlt App-Start oder ein
+        // Unlock trotz "Pause/privat" faelschlich als Arbeit).
+        func isActiveStart(_ t: EventType) -> Bool { t == .active }
+        func isActiveEnd(_ t: EventType) -> Bool { t == .inactive || t == .appStop }
 
         // Obergrenze fuer ein offenes Intervall: jetzt, aber hoechstens bis zum
         // letzten Event + Karenz (Crash-Schutz) und nie ueber den Tag hinaus.
@@ -140,11 +141,13 @@ final class DayStore {
         // Laufende Pause am Tagesende fuer HEUTE sichtbar machen: wenn der
         // letzte Zustand inaktiv ist (manuelle Pause / Sperre / idle) und nach
         // dem letzten Arbeitsblock liegt, eine offene Pause bis jetzt anzeigen.
+        // activeSince == nil => aktuell KEIN offenes Arbeitsintervall => Pause.
         if Calendar.current.isDateInToday(date),
+           activeSince == nil,
            let lastWorkEnd = workIntervals.last?.1,
-           let last = events.last,
-           (last.type == .inactive || last.type == .lock || last.type == .sleep),
-           last.reason != "feierabend", last.reason != "quit" {
+           let lastState = events.last(where: { $0.type == .active || $0.type == .inactive }),
+           lastState.type == .inactive,
+           lastState.reason != "feierabend", lastState.reason != "quit" {
             let capNow = min(now, endOfDay)
             if capNow > lastWorkEnd {
                 segments.append(Segment(start: lastWorkEnd, end: capNow, kind: .breakTime,

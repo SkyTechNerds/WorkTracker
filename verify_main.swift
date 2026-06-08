@@ -18,16 +18,17 @@ let dayStore = DayStore(eventStore: store, dailyDir: dailyDir)
 let base = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
 let endOfDay = h(base, 23, 59)
 
-store.append(Event(ts: h(base, 8, 0), type: .appStart, reason: "launch"))
+// Kanonische State-Machine-Events: .active (Arbeit zaehlt) bis .inactive.
+store.append(Event(ts: h(base, 8, 0), type: .active, reason: "launch"))
 store.append(Event(ts: h(base, 8, 30), type: .sample, app: "Code", repo: "JUMO-Website-CMS", branch: "wcms-2155-b2b", ticket: "WCMS-2155"))
 store.append(Event(ts: h(base, 9, 30), type: .sample, app: "Code", repo: "JUMO-Website-CMS", branch: "wcms-2155-b2b", ticket: "WCMS-2155"))
-store.append(Event(ts: h(base, 10, 0), type: .lock))                 // Pause 1 Beginn
-store.append(Event(ts: h(base, 10, 12), type: .unlock))              // 12 min Pause
+store.append(Event(ts: h(base, 10, 0), type: .inactive, reason: "lock"))  // Pause 1 Beginn
+store.append(Event(ts: h(base, 10, 12), type: .active, reason: "unlock"))  // 12 min Pause
 store.append(Event(ts: h(base, 11, 30), type: .sample, app: "Chrome", repo: "aem-commerce-prerender", branch: "prerender-x", ticket: nil))
-store.append(Event(ts: h(base, 12, 0), type: .inactive, reason: "idle")) // Pause 2 Beginn (Mittag)
-store.append(Event(ts: h(base, 12, 18), type: .active, reason: "input")) // 18 min Pause
+store.append(Event(ts: h(base, 12, 0), type: .inactive, reason: "idle"))   // Pause 2 Beginn (Mittag)
+store.append(Event(ts: h(base, 12, 18), type: .active, reason: "input"))   // 18 min Pause
 store.append(Event(ts: h(base, 14, 0), type: .sample, app: "Code", repo: "JUMO-Website-CMS", branch: "wcms-2155-b2b", ticket: "WCMS-2155"))
-store.append(Event(ts: h(base, 16, 30), type: .appStop, reason: "quit"))
+store.append(Event(ts: h(base, 16, 30), type: .inactive, reason: "quit"))
 
 print("=== Auto-Ableitung ===")
 let segs = dayStore.deriveSegments(date: base, now: endOfDay)
