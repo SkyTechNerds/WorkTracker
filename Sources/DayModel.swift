@@ -159,13 +159,26 @@ final class DayStore {
 
     // MARK: - Laden / Speichern (Auto + Overrides)
 
-    /// Liefert die anzuzeigenden Segmente: materialisierter Snapshot (eingefroren
-    /// und voll editierbar) falls vorhanden, sonst die Live-Ableitung. Editieren
-    /// materialisiert den Tag; "Auf Auto" stellt die Live-Ableitung wieder her.
+    /// Liefert die anzuzeigenden Segmente.
+    /// - Vergangene Tage: materialisierter Snapshot (eingefroren, voll editierbar).
+    /// - HEUTE materialisiert: eingefrorene Korrekturen bis zum letzten Edit-Punkt
+    ///   PLUS Live-Fortsetzung danach – so läuft das Tracking nach einem Edit
+    ///   einfach weiter (z. B. Vormittag korrigiert, Nachmittag live).
+    /// - Sonst: reine Live-Ableitung. "Auf Auto" entfernt die Korrekturen.
     func segments(date: Date, now: Date = Date()) -> [Segment] {
         if isMaterialized(date), let data = try? Data(contentsOf: editsURL(date)),
            let stored = try? decoder.decode([Segment].self, from: data) {
-            return stored.sorted { $0.start < $1.start }
+            guard Calendar.current.isDateInToday(date) else {
+                return stored.sorted { $0.start < $1.start }
+            }
+            // Heute: hinter dem letzten korrigierten Zeitpunkt live weiterlaufen.
+            let cutoff = stored.map(\.end).max() ?? Calendar.current.startOfDay(for: date)
+            var tail: [Segment] = []
+            for var s in deriveSegments(date: date, now: now) where s.end > cutoff {
+                if s.start < cutoff { s.start = cutoff }
+                tail.append(s)
+            }
+            return (stored + tail).sorted { $0.start < $1.start }
         }
         return deriveSegments(date: date, now: now)
     }
