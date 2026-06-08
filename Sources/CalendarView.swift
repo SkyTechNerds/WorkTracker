@@ -119,7 +119,9 @@ struct CalendarView: View {
                     endHour: configStore.config.workdayEndHour,
                     onTap: { seg in editorTarget = .edit(seg) },
                     onAdjust: { seg, s, e in adjustSegment(seg, start: s, end: e) },
-                    onDragging: { timelineDragging = $0 })
+                    onDragging: { timelineDragging = $0 },
+                    snapMinutes: Double(configStore.config.roundingMinutes > 0
+                                        ? configStore.config.roundingMinutes : 15))
                 Divider()
                 ticketPanel.frame(width: 250)
             }
@@ -596,10 +598,10 @@ struct DayTimelineView: View {
     let onTap: (Segment) -> Void
     let onAdjust: (Segment, Date, Date) -> Void
     let onDragging: (Bool) -> Void
+    let snapMinutes: Double
 
     private let hourHeight: CGFloat = 52
     private let gutter: CGFloat = 56
-    private let snapMinutes: Double = 5
 
     @State private var drag: DragInfo?
 
