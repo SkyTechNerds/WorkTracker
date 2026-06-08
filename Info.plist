@@ -2,35 +2,35 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>
-    <string>WorkTracker</string>
-    <key>CFBundleDisplayName</key>
-    <string>WorkTracker</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.skycryer.WorkTracker</string>
-    <key>CFBundleExecutable</key>
-    <string>WorkTracker</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>CFBundleIconName</key>
-    <string>AppIcon</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.1.1</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSCalendarsUsageDescription</key>
-    <string>Zeigt den Titel des laufenden Termins als Meeting-Namen an.</string>
-    <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>Zeigt den Titel des laufenden Termins als Meeting-Namen an.</string>
-    <key>NSHumanReadableCopyright</key>
-    <string>WorkTracker</string>
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
+	<key>CFBundleDisplayName</key>
+	<string>WorkTracker</string>
+	<key>CFBundleExecutable</key>
+	<string>WorkTracker</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.skycryer.WorkTracker</string>
+	<key>CFBundleName</key>
+	<string>WorkTracker</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.2</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Zeigt den Titel des laufenden Termins als Meeting-Namen an.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Zeigt den Titel des laufenden Termins als Meeting-Namen an.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>WorkTracker</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 </dict>
 </plist>
