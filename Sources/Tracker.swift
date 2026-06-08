@@ -57,6 +57,7 @@ final class Tracker: ObservableObject {
     private var lastNotifiedTicket: String?
     private var endedForDay: String?          // Tagesschluessel mit Feierabend
     private var isEnded: Bool { endedForDay == currentDayKey }
+    private var callTitle: String?            // gecachter Meeting-Titel des laufenden Calls
 
     private var evalTimer: Timer?
     private var sampleTimer: Timer?
@@ -216,6 +217,7 @@ final class Tracker: ObservableObject {
         let callApp = config.detectCalls ? CallDetector.activeCall() : nil
         inCall = (callApp != nil)
         callAppName = callApp
+        if !inCall { callTitle = nil }   // Call vorbei -> Titel-Cache leeren
         let desired = !screenLocked && !screenAsleep && (idle < threshold || inCall)
 
         // Kein Zustandswechsel noetig.
@@ -387,11 +389,12 @@ final class Tracker: ObservableObject {
         let callApp = config.detectCalls ? CallDetector.activeCall() : nil
         inCall = (callApp != nil)
         callAppName = callApp
-        // Stabiles Segment-Label: Kalender-Titel, sonst generisch "Meeting".
-        // NICHT der App-Name (wechselt je nach Vordergrund-App -> Splitter-Chaos).
+        // Stabiles Segment-Label: einmal gefundener Kalender-Titel wird für die
+        // Call-Dauer gecacht (sonst flippt es zwischen Titel und "Meeting").
         var callLabel: String? = nil
         if callApp != nil {
-            callLabel = CalendarLookup.shared.currentEventTitle() ?? "Meeting"
+            if let t = CalendarLookup.shared.currentEventTitle() { callTitle = t }
+            callLabel = callTitle ?? "Meeting"
         }
 
         log(Event(ts: Date(), type: .sample, app: app,

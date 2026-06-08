@@ -74,7 +74,7 @@ enum ReportWriter {
             var perTicket: [String: TimeInterval] = [:]
             var noteFor: [String: [String]] = [:]
             for s in work {
-                let key = s.ticket ?? "Ohne Ticket"
+                let key = s.ticket ?? UnassignedLabel
                 perTicket[key, default: 0] += s.duration
                 if let n = s.note, !n.isEmpty { noteFor[key, default: []].append(n) }
             }

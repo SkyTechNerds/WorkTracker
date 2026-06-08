@@ -11,6 +11,10 @@
 
 import Foundation
 
+/// Label für Arbeitszeit ohne zugewiesenes Ticket (kann legitime Arbeit sein,
+/// z. B. Kundenabstimmung) – daher "Nicht zugewiesen".
+let UnassignedLabel = "Nicht zugewiesen"
+
 enum SegmentKind: String, Codable, Hashable {
     case work
     case breakTime
@@ -113,9 +117,10 @@ final class DayStore {
         }
         guard !workIntervals.isEmpty else { return [] }
 
-        // Ein Arbeitsintervall wird nach Call-Status aufgeteilt: Phasen mit
-        // laufendem Call werden als "Meeting" gelabelt (Notiz = App), die
-        // restlichen Phasen bekommen das häufigste Ticket der Samples.
+        // Ein Arbeitsintervall wird nur in "im Call" / "nicht im Call" geteilt
+        // (NICHT nach Call-Titel – sonst zerfällt ein Meeting in mehrere Blöcke,
+        // wenn der Kalender-Titel mal fehlt). Der Call-Block bekommt den besten
+        // verfügbaren Titel (häufigster Nicht-"Meeting"-Wert, sonst "Meeting").
         func workSegments(_ start: Date, _ end: Date) -> [Segment] {
             let inRange = events.filter { $0.type == .sample && $0.ts >= start && $0.ts <= end }
                 .sorted { $0.ts < $1.ts }
@@ -126,29 +131,31 @@ final class DayStore {
                 }
                 return counts.max(by: { $0.value < $1.value })?.key
             }
-            func makeSeg(_ a: Date, _ b: Date, call: String?) -> Segment {
-                if let call {
-                    // call ist der Kalender-Terminname (oder generisch "Meeting").
-                    // Direkt als Block-Titel setzen -> kein manuelles Umbenennen nötig.
-                    return Segment(start: a, end: b, kind: .work, ticket: call,
-                                   note: nil, source: .auto)
+            func meetingTitle(_ a: Date, _ b: Date) -> String {
+                var counts: [String: Int] = [:]
+                for ev in inRange where ev.ts >= a && ev.ts <= b {
+                    if let c = ev.call, c != "Meeting" { counts[c, default: 0] += 1 }
                 }
-                return Segment(start: a, end: b, kind: .work, ticket: ticketFor(a, b),
-                               note: nil, source: .auto)
+                return counts.max(by: { $0.value < $1.value })?.key ?? "Meeting"
             }
-            guard !inRange.isEmpty else { return [makeSeg(start, end, call: nil)] }
+            func makeSeg(_ a: Date, _ b: Date, inCall: Bool) -> Segment {
+                let ticket = inCall ? meetingTitle(a, b) : ticketFor(a, b)
+                return Segment(start: a, end: b, kind: .work, ticket: ticket, note: nil, source: .auto)
+            }
+            guard !inRange.isEmpty else { return [makeSeg(start, end, inCall: false)] }
 
             var subs: [Segment] = []
             var segStart = start
-            var state: String? = inRange.first?.call
+            var inCall = inRange.first?.call != nil
             for ev in inRange {
-                if ev.call != state {
-                    if ev.ts > segStart { subs.append(makeSeg(segStart, ev.ts, call: state)) }
+                let evInCall = ev.call != nil
+                if evInCall != inCall {
+                    if ev.ts > segStart { subs.append(makeSeg(segStart, ev.ts, inCall: inCall)) }
                     segStart = ev.ts
-                    state = ev.call
+                    inCall = evInCall
                 }
             }
-            if end > segStart { subs.append(makeSeg(segStart, end, call: state)) }
+            if end > segStart { subs.append(makeSeg(segStart, end, inCall: inCall)) }
             return subs
         }
 
@@ -257,7 +264,7 @@ final class DayStore {
         let work = segments(date: date, now: now).filter { $0.kind == .work }
         var map: [String: TimeInterval] = [:]
         for s in work {
-            map[s.ticket ?? "Ohne Ticket", default: 0] += s.duration
+            map[s.ticket ?? UnassignedLabel, default: 0] += s.duration
         }
         return map.sorted { $0.value > $1.value }.map { (ticket: $0.key, seconds: $0.value) }
     }

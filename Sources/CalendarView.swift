@@ -138,7 +138,7 @@ struct CalendarView: View {
         var time: [String: TimeInterval] = [:]
         var notes: [String: Set<String>] = [:]
         for s in segs where s.kind == .work {
-            let k = s.ticket ?? "Ohne Ticket"
+            let k = s.ticket ?? UnassignedLabel
             time[k, default: 0] += s.duration
             if let n = s.note, !n.isEmpty { notes[k, default: []].insert(n) }
         }
@@ -185,7 +185,7 @@ struct CalendarView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack {
                                         Text(row.ticket).font(.callout).bold()
-                                            .foregroundStyle(row.ticket == "Ohne Ticket" ? .orange : .primary)
+                                            .foregroundStyle(row.ticket == UnassignedLabel ? .orange : .primary)
                                         Spacer()
                                         Text(Fmt.hm(row.seconds, roundTo: r))
                                             .font(.callout).monospacedDigit()
@@ -509,12 +509,12 @@ struct CalendarView: View {
 
     private func noteForGroup(_ key: String) -> String? {
         segments.first {
-            $0.kind == .work && ($0.ticket ?? "Ohne Ticket") == key && !($0.note ?? "").isEmpty
+            $0.kind == .work && ($0.ticket ?? UnassignedLabel) == key && !($0.note ?? "").isEmpty
         }?.note
     }
 
     private func groupSeconds(_ key: String) -> TimeInterval {
-        segments.filter { $0.kind == .work && ($0.ticket ?? "Ohne Ticket") == key }
+        segments.filter { $0.kind == .work && ($0.ticket ?? UnassignedLabel) == key }
             .reduce(0) { $0 + $1.duration }
     }
 
@@ -526,7 +526,7 @@ struct CalendarView: View {
         let n = note.trimmingCharacters(in: .whitespacesAndNewlines)
         var list = segments
         let targets = list.indices
-            .filter { list[$0].kind == .work && (list[$0].ticket ?? "Ohne Ticket") == group }
+            .filter { list[$0].kind == .work && (list[$0].ticket ?? UnassignedLabel) == group }
             .sorted { list[$0].start < list[$1].start }
         let total = targets.reduce(0.0) { $0 + list[$1].duration }
 
@@ -792,18 +792,18 @@ struct TicketAssignView: View {
         let full = max(0, Int((available / 60).rounded()))
         self.fullMinutes = full
         _minutes = State(initialValue: full)
-        _ticket = State(initialValue: group == "Ohne Ticket" ? "" : group)
+        _ticket = State(initialValue: group == UnassignedLabel ? "" : group)
         _note = State(initialValue: currentNote ?? "")
     }
 
     /// Dauer-Aufteilung nur sinnvoll beim Zuordnen von „Ohne Ticket"-Zeit.
-    private var allowDuration: Bool { group == "Ohne Ticket" && fullMinutes > 0 }
+    private var allowDuration: Bool { group == UnassignedLabel && fullMinutes > 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(group == "Ohne Ticket" ? "Ticket zuweisen" : "Ticket bearbeiten")
+            Text(group == UnassignedLabel ? "Ticket zuweisen" : "Ticket bearbeiten")
                 .font(.headline)
-            Text("Gilt für \(group == "Ohne Ticket" ? "die nicht zugeordnete Zeit" : "alle Blöcke von \(group)") an diesem Tag.")
+            Text("Gilt für \(group == UnassignedLabel ? "die nicht zugeordnete Zeit" : "alle Blöcke von \(group)") an diesem Tag.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
