@@ -128,10 +128,10 @@ final class DayStore {
             }
             func makeSeg(_ a: Date, _ b: Date, call: String?) -> Segment {
                 if let call {
-                    // call ist Kalender-Titel oder generisch "Meeting".
-                    let note = call == "Meeting" ? nil : call
-                    return Segment(start: a, end: b, kind: .work, ticket: "Meeting",
-                                   note: note, source: .auto)
+                    // call ist der Kalender-Terminname (oder generisch "Meeting").
+                    // Direkt als Block-Titel setzen -> kein manuelles Umbenennen nötig.
+                    return Segment(start: a, end: b, kind: .work, ticket: call,
+                                   note: nil, source: .auto)
                 }
                 return Segment(start: a, end: b, kind: .work, ticket: ticketFor(a, b),
                                note: nil, source: .auto)
