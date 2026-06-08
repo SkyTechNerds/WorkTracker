@@ -11,7 +11,7 @@
 set -e
 NAME="WorkTracker"
 
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$NAME\""; then
+if security find-identity -p codesigning 2>/dev/null | grep -q "\"$NAME\""; then
   echo "✓ Identität '$NAME' existiert bereits."
   exit 0
 fi
@@ -32,8 +32,11 @@ EOF
 
 openssl req -x509 -newkey rsa:2048 -keyout "$DIR/key.pem" -out "$DIR/cert.pem" \
   -days 3650 -nodes -config "$DIR/cfg" >/dev/null 2>&1
-openssl pkcs12 -export -inkey "$DIR/key.pem" -in "$DIR/cert.pem" \
-  -out "$DIR/id.p12" -name "$NAME" -passout pass:wt >/dev/null 2>&1
+# -legacy: macOS `security` kann den OpenSSL-3-Standard-MAC sonst nicht lesen.
+openssl pkcs12 -export -legacy -inkey "$DIR/key.pem" -in "$DIR/cert.pem" \
+  -out "$DIR/id.p12" -name "$NAME" -passout pass:wt >/dev/null 2>&1 \
+  || openssl pkcs12 -export -inkey "$DIR/key.pem" -in "$DIR/cert.pem" \
+       -out "$DIR/id.p12" -name "$NAME" -passout pass:wt >/dev/null 2>&1
 
 security import "$DIR/id.p12" -k ~/Library/Keychains/login.keychain-db -P wt -T /usr/bin/codesign
 rm -rf "$DIR"

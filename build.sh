@@ -41,7 +41,7 @@ swiftc \
 # Signatur: stabile Identität "WorkTracker" falls vorhanden (Berechtigungen
 # bleiben über Updates erhalten, siehe setup-signing.sh), sonst Ad-hoc.
 IDENTITY="${WT_SIGN_IDENTITY:-WorkTracker}"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$IDENTITY\""; then
+if security find-identity -p codesigning 2>/dev/null | grep -q "\"$IDENTITY\""; then
   echo "Signing with identity: $IDENTITY"
   codesign --force --sign "$IDENTITY" "$APP" >/dev/null 2>&1 \
     || codesign --force --sign - "$APP" >/dev/null 2>&1 || true
