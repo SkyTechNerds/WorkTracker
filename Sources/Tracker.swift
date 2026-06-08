@@ -85,6 +85,8 @@ final class Tracker: ObservableObject {
         didStart = true
         currentDayKey = EventStore.dayKey(Date())
         registerObservers()
+        // Teams-Statuswechsel sofort verarbeiten (statt erst beim 20s-Takt).
+        TeamsClient.shared.onMeetingChange = { [weak self] in self?.evaluate(reason: "teams") }
         log(Event(ts: Date(), type: .appStart, reason: "launch"))
 
         // Nicht sofort als aktiv zaehlen – ueber die State-Machine laufen,
@@ -428,7 +430,7 @@ final class Tracker: ObservableObject {
         } else if wasInMeeting {
             let start = meetingStartedAt ?? Date()
             let end = Date()
-            if config.askMeetingTitle, !meetingHadTitle, end.timeIntervalSince(start) >= 60 {
+            if config.askMeetingTitle, !meetingHadTitle, end.timeIntervalSince(start) >= 30 {
                 let info = "Wie hieß der Call von \(Fmt.clock(start))–\(Fmt.clock(end))? (Default „Meeting“)"
                 MeetingTitlePrompt.shared.show(prefill: "Meeting", info: info) { [weak self] title in
                     self?.renameMeeting(start: start, end: end, title: title)

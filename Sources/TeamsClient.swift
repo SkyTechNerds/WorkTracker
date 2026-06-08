@@ -22,6 +22,9 @@ final class TeamsClient: ObservableObject {
     @Published var connected = false
     @Published var status: String = "inaktiv"
 
+    /// Wird bei jeder Änderung von isInMeeting sofort aufgerufen.
+    var onMeetingChange: (() -> Void)?
+
     private var task: URLSessionWebSocketTask?
     private var enabled = false
     private var reconnectWork: DispatchWorkItem?
@@ -105,6 +108,7 @@ final class TeamsClient: ObservableObject {
             status = "gekoppelt"
         }
         if let mu = obj["meetingUpdate"] as? [String: Any] {
+            let prev = isInMeeting
             if let ms = mu["meetingState"] as? [String: Any], let inM = ms["isInMeeting"] as? Bool {
                 isInMeeting = inM
             } else if let mp = mu["meetingPermissions"] as? [String: Any] {
@@ -115,6 +119,7 @@ final class TeamsClient: ObservableObject {
                 isInMeeting = canLeave || canMute
             }
             status = isInMeeting ? "im Meeting" : "verbunden"
+            if isInMeeting != prev { onMeetingChange?() }
         }
         if let err = obj["errorMsg"] as? String {
             status = "Teams: \(err)"
