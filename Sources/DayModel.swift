@@ -206,9 +206,35 @@ final class DayStore {
                 if s.start < cutoff { s.start = cutoff }
                 tail.append(s)
             }
-            return (stored + tail).sorted { $0.start < $1.start }
+            // Fortsetzung desselben Blocks (z. B. laufendes Meeting) an den
+            // bearbeiteten Block anhängen statt einen neuen zu erzeugen.
+            return coalesce((stored + tail).sorted { $0.start < $1.start })
         }
-        return deriveSegments(date: date, now: now)
+        return coalesce(deriveSegments(date: date, now: now))
+    }
+
+    /// Identität eines Segments fürs Verschmelzen: gleiche Notiz (z. B.
+    /// Kalender-Titel des Meetings) oder gleiches Ticket.
+    private func identity(_ s: Segment) -> String {
+        if let n = s.note, !n.isEmpty { return "N|" + n }
+        return "T|" + (s.ticket ?? "")
+    }
+
+    /// Verschmilzt zeitlich zusammenhängende Arbeitsblöcke gleicher Identität –
+    /// behält die Felder des früheren (ggf. manuell bearbeiteten) Blocks.
+    private func coalesce(_ segs: [Segment]) -> [Segment] {
+        let sorted = segs.sorted { $0.start < $1.start }
+        var out: [Segment] = []
+        for s in sorted {
+            if var last = out.last, last.kind == .work, s.kind == .work,
+               identity(last) == identity(s), s.start <= last.end.addingTimeInterval(1) {
+                last.end = max(last.end, s.end)
+                out[out.count - 1] = last
+            } else {
+                out.append(s)
+            }
+        }
+        return out
     }
 
     /// Speichert eine bearbeitete Segmentliste (materialisiert den Tag).
