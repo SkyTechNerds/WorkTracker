@@ -75,6 +75,8 @@ struct GeneralSettingsView: View {
                     }
                     Toggle("Zusätzlich per Mikrofon (Ad-hoc-Calls)",
                            isOn: $configStore.config.detectCallsViaMic)
+                    Toggle("Nach Call-Ende nach Titel fragen (spontane Calls)",
+                           isOn: $configStore.config.askMeetingTitle)
                 }
                 Text("Erkennt Meetings primär über den laufenden Kalender-Termin (zuverlässig) und labelt die Zeit automatisch mit dem Termin-Namen. Die Teams-API liest den echten Meeting-Status (auch Ad-hoc-Calls, hardware-unabhängig). Die Mikrofon-Erkennung kann bei Headsets fehlauslösen, die das Mikro/Audio dauerhaft aktiv halten.")
                     .font(.caption).foregroundStyle(.secondary)

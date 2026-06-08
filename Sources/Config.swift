@@ -175,6 +175,8 @@ struct AppConfig: Codable, Equatable {
     var detectCallsViaMic: Bool
     // Teams-Meeting-Status über die lokale Teams-API (WebSocket) lesen.
     var detectTeamsApi: Bool
+    // Nach Ende eines spontanen Calls (ohne Termin) nach dem Titel fragen.
+    var askMeetingTitle: Bool
     // Updates: beim Start prüfen / gefundene Updates automatisch installieren.
     var autoCheckUpdates: Bool
     var autoInstallUpdates: Bool
@@ -217,6 +219,7 @@ struct AppConfig: Codable, Equatable {
             detectCalls: true,
             detectCallsViaMic: false,
             detectTeamsApi: false,
+            askMeetingTitle: true,
             autoCheckUpdates: true,
             autoInstallUpdates: false,
             betaUpdates: false,
@@ -254,6 +257,7 @@ extension AppConfig {
         detectCalls = try c.decodeIfPresent(Bool.self, forKey: .detectCalls) ?? d.detectCalls
         detectCallsViaMic = try c.decodeIfPresent(Bool.self, forKey: .detectCallsViaMic) ?? d.detectCallsViaMic
         detectTeamsApi = try c.decodeIfPresent(Bool.self, forKey: .detectTeamsApi) ?? d.detectTeamsApi
+        askMeetingTitle = try c.decodeIfPresent(Bool.self, forKey: .askMeetingTitle) ?? d.askMeetingTitle
         autoCheckUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? d.autoCheckUpdates
         autoInstallUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoInstallUpdates) ?? d.autoInstallUpdates
         betaUpdates = try c.decodeIfPresent(Bool.self, forKey: .betaUpdates) ?? d.betaUpdates

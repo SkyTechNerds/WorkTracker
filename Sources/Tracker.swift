@@ -57,6 +57,10 @@ final class Tracker: ObservableObject {
     private var lastNotifiedTicket: String?
     private var endedForDay: String?          // Tagesschluessel mit Feierabend
     private var isEnded: Bool { endedForDay == currentDayKey }
+    // Meeting-Verlauf (für die Titel-Abfrage nach spontanen Calls)
+    private var wasInMeeting = false
+    private var meetingStartedAt: Date?
+    private var meetingHadTitle = false
 
     private var evalTimer: Timer?
     private var sampleTimer: Timer?
@@ -216,6 +220,7 @@ final class Tracker: ObservableObject {
         let label = meetingLabel()
         inCall = (label != nil)
         callAppName = label
+        detectMeetingTransition(label: label)
         let desired = !screenLocked && !screenAsleep && (idle < threshold || inCall)
 
         // Kein Zustandswechsel noetig.
@@ -407,6 +412,47 @@ final class Tracker: ObservableObject {
         // 3) optional Mikrofon (Ad-hoc-Calls).
         if config.detectCallsViaMic, CallDetector.activeCall() != nil { return "Meeting" }
         return nil
+    }
+
+    /// Erkennt Meeting-Beginn/-Ende. Nach Ende eines spontanen Calls (generisch
+    /// "Meeting", kein Kalender-Titel) wird nach dem Titel gefragt.
+    private func detectMeetingTransition(label: String?) {
+        let now = (label != nil)
+        if now {
+            if !wasInMeeting { meetingStartedAt = Date(); meetingHadTitle = false }
+            if let l = label, l != "Meeting" { meetingHadTitle = true }
+        } else if wasInMeeting {
+            let start = meetingStartedAt ?? Date()
+            let end = Date()
+            if config.askMeetingTitle, !meetingHadTitle, end.timeIntervalSince(start) >= 120 {
+                let info = "Wie hieß der Call von \(Fmt.clock(start))–\(Fmt.clock(end))? (Default „Meeting“)"
+                MeetingTitlePrompt.shared.show(prefill: "Meeting", info: info) { [weak self] title in
+                    self?.renameMeeting(start: start, end: end, title: title)
+                }
+            }
+            meetingStartedAt = nil
+        }
+        wasInMeeting = now
+    }
+
+    /// Benennt die generischen "Meeting"-Blöcke im Zeitfenster auf `title` um.
+    func renameMeeting(start: Date, end: Date, title: String) {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, t != "Meeting" else { return }
+        let date = start
+        var segs = dayStore.segments(date: date)
+        var changed = false
+        for i in segs.indices where segs[i].kind == .work {
+            if segs[i].ticket == "Meeting", segs[i].start < end, segs[i].end > start {
+                segs[i].ticket = t
+                changed = true
+            }
+        }
+        if changed {
+            dayStore.save(date: date, segments: segs)
+            refreshSummary()
+            writeReport(for: date)
+        }
     }
 
     // MARK: - Helpers
