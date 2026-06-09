@@ -416,7 +416,7 @@ function CalendarView() {
               if (isMeeting) { style.background = 'var(--block-meeting)'; style.color = '#fff' }
               else if (pc) { style.background = pc; style.color = contrastText(pc) }
               return (
-                <div key={s.id} className={`block ${s.kind} ${isLive ? 'live' : ''} ${hoverKey === segKey(s) ? 'hl' : ''}`} style={style}
+                <div key={s.id} className={`block ${s.kind} ${isLive ? 'live' : ''} ${hoverKey ? (hoverKey === segKey(s) ? 'hl' : 'dim') : ''}`} style={style}
                   onPointerDown={e => onPointerDown(e, s, 'move')}
                   onMouseEnter={() => setHoverKey(segKey(s))} onMouseLeave={() => setHoverKey(null)}
                   title={s.note ? `${title} — ${s.note}` : title}>
@@ -440,7 +440,7 @@ function CalendarView() {
                 <span className="secs">{hm(g.total)}</span>
               </div>
               {Object.entries(g.tickets).sort((a, b) => b[1] - a[1]).map(([tk, secs]) => (
-                <div key={tk} className={`ticket-row sub ${tk === UNASSIGNED ? 'unassigned' : ''} ${hoverKey === 't:' + tk ? 'hl' : ''}`}
+                <div key={tk} className={`ticket-row sub ${tk === UNASSIGNED ? 'unassigned' : ''} ${hoverKey ? (hoverKey === 't:' + tk ? 'hl' : 'dim') : ''}`}
                   onMouseEnter={() => setHoverKey('t:' + tk)} onMouseLeave={() => setHoverKey(null)}>
                   <span className="tk-name">{tk}</span>
                   <span className="secs">{hm(secs)}
@@ -459,7 +459,7 @@ function CalendarView() {
                 <span className="secs">{hm(breakTotal)}</span>
               </div>
               {breaks.map(b => (
-                <div key={b.id} className={`ticket-row sub ${hoverKey === 's:' + b.id ? 'hl' : ''}`}
+                <div key={b.id} className={`ticket-row sub ${hoverKey ? (hoverKey === 's:' + b.id ? 'hl' : 'dim') : ''}`}
                   onMouseEnter={() => setHoverKey('s:' + b.id)} onMouseLeave={() => setHoverKey(null)}>
                   <span className="tk-name">{clock(b.start)}–{clock(b.end)}</span>
                   <span className="secs">{hm((b.end - b.start) / 1000)}
