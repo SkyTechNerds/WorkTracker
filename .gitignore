@@ -1,15 +1,6 @@
-# Build-Artefakte
-WorkTracker.app/
-*.icns
-build/
+node_modules/
 dist/
-
-# Verteilpakete
-*.zip
-
-# macOS
+out/
+*.log
 .DS_Store
-
-# Editor
-.swiftpm/
-*.xcuserstate
+.env
