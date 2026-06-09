@@ -263,7 +263,18 @@ function CalendarView() {
     const list = exists ? segments.map(s => s.id === seg.id ? seg : s) : [...segments, { ...seg, source: 'manual' }]
     setEditing(null); persist(list)
   }
-  const deleteSeg = (id: string) => { setEditing(null); persist(segments.filter(s => s.id !== id)) }
+  // Löschen ohne Lücke: angrenzenden Block über den freigewordenen Bereich ziehen.
+  const deleteFilling = (id: string): Seg[] => {
+    const sorted = [...segments].sort((a, b) => a.start - b.start)
+    const i = sorted.findIndex(s => s.id === id)
+    if (i < 0) return segments
+    const seg = sorted[i], prev = sorted[i - 1], next = sorted[i + 1]
+    let list = segments.filter(s => s.id !== id)
+    if (prev && Math.abs(prev.end - seg.start) < 1000) list = list.map(s => s.id === prev.id ? { ...s, end: seg.end } : s)
+    else if (next && Math.abs(next.start - seg.end) < 1000) list = list.map(s => s.id === next.id ? { ...s, start: seg.start } : s)
+    return list
+  }
+  const deleteSeg = (id: string) => { setEditing(null); persist(deleteFilling(id)) }
 
   const assign = (group: string, ticket: string, note: string, project: string, from: number | null, to: number | null) => {
     setAssignKey(null)
@@ -476,7 +487,7 @@ function CalendarView() {
       {editing && <BlockEditor seg={editing} projects={cfg.projects} onSave={saveEdit} onDelete={deleteSeg} onCancel={() => setEditing(null)} />}
       {assignKey && <TicketDetail group={assignKey} segments={segments} projects={cfg.projects}
         onAdd={(from, to, note, project) => assignRange(setTime(dateMs, from), setTime(dateMs, to), assignKey === UNASSIGNED ? '' : assignKey, note, project)}
-        onDelete={(id) => persist(segments.filter(s => s.id !== id))}
+        onDelete={(id) => persist(deleteFilling(id))}
         onRename={(ticket, note, project) => assign(assignKey, ticket, note, project, null, null)}
         onCancel={() => setAssignKey(null)} />}
       {rangeOpen && <RangeAssign projects={cfg.projects}
