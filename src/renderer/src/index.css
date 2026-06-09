@@ -122,9 +122,13 @@ button, input, select, textarea { font-family: inherit; }
   animation: live-shimmer 1.8s linear infinite;
 }
 @keyframes live-shimmer { 0% { background-position: 130% 0; } 100% { background-position: -130% 0; } }
-.block .handle { position: absolute; left: 0; right: 0; height: 7px; cursor: ns-resize; }
+.block .handle { position: absolute; left: 0; right: 0; height: 10px; cursor: ns-resize; z-index: 3; }
 .block .handle.top { top: 0; }
 .block .handle.bottom { bottom: 0; }
+.block .handle:hover::before { content: ''; position: absolute; left: 6px; right: 6px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.7); }
+.block .handle.top:hover::before { top: 1px; }
+.block .handle.bottom:hover::before { bottom: 1px; }
+.block.break .handle:hover::before { background: rgba(0,0,0,0.3); }
 
 /* Sidebar */
 .sidebar { width: 260px; border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; }
