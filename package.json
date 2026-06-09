@@ -1,6 +1,6 @@
 {
   "name": "worktracker",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Cross-platform Arbeitszeit-Tracker (Mac + Windows)",
   "main": "./out/main/index.js",
   "author": "SkyTechNerds",
@@ -18,19 +18,47 @@
     "appId": "com.skytechnerds.worktracker",
     "productName": "WorkTracker",
     "afterPack": "build/afterPack.cjs",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["out/**/*", "package.json"],
-    "publish": [{ "provider": "github", "owner": "SkyTechNerds", "repo": "WorkTracker" }],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "SkyTechNerds",
+        "repo": "WorkTracker"
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": [{ "target": "dmg", "arch": "arm64" }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": "arm64"
+        }
+      ],
       "icon": "build/icon.icns",
       "identity": null,
-      "extendInfo": { "LSUIElement": true }
+      "extendInfo": {
+        "LSUIElement": true
+      }
     },
-    "dmg": { "title": "WorkTracker ${version}" },
+    "dmg": {
+      "title": "WorkTracker ${version}"
+    },
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.ico"
     },
     "nsis": {
