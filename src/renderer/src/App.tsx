@@ -388,13 +388,15 @@ function CalendarView() {
               const next = arr[i + 1]
               if (next) height = Math.min(height, Math.max(3, yOff(next.start) - top)) // nie über den nächsten Block
               const isMeeting = s.kind === 'work' && !!s.meeting
-              const title = s.kind === 'break' ? 'Pause' : (s.ticket || (isMeeting ? 'Meeting' : 'Arbeit'))
+              const isLive = s.id === liveId
+              const baseTitle = s.kind === 'break' ? 'Pause' : (s.ticket || (isMeeting ? 'Meeting' : 'Arbeit'))
+              const title = isLive ? `${baseTitle} – aktiv` : baseTitle
               const pc = s.kind === 'work' && !isMeeting ? projColor(s.project) : undefined
               const style: React.CSSProperties = { top, height }
               if (isMeeting) { style.background = 'var(--block-meeting)'; style.color = '#fff' }
               else if (pc) { style.background = pc; style.color = contrastText(pc) }
               return (
-                <div key={s.id} className={`block ${s.kind} ${s.id === liveId ? 'live' : ''}`} style={style}
+                <div key={s.id} className={`block ${s.kind} ${isLive ? 'live' : ''}`} style={style}
                   onPointerDown={e => onPointerDown(e, s, 'move')}
                   title={s.note ? `${title} — ${s.note}` : title}>
                   <div className="handle top" onPointerDown={e => onPointerDown(e, s, 'top')} />
