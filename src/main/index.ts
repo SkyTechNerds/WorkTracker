@@ -157,8 +157,8 @@ function createWindow(view?: string) {
   if (win) { win.show(); win.focus(); if (view) win.webContents.send('navigate', view); return }
   const mac = process.platform === 'darwin'
   win = new BrowserWindow({
-    width: 980, height: 680,
-    minWidth: 720, minHeight: 480,
+    width: 1240, height: 740,
+    minWidth: 900, minHeight: 520,
     show: false,
     title: 'WorkTracker',
     // Nativer macOS-Look: eingelassene Ampel-Buttons + Vibrancy (Milchglas).
