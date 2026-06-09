@@ -649,9 +649,10 @@ function OvertimeView() {
 // ---- Einstellungen ----
 const WEEKDAYS = [['So', 1], ['Mo', 2], ['Di', 3], ['Mi', 4], ['Do', 5], ['Fr', 6], ['Sa', 7]] as const
 
-const SETTINGS_TABS: Array<[string, string]> = [
-  ['projects', 'Projekte'], ['capture', 'Erfassung'], ['meetings', 'Meetings'],
-  ['ai', 'KI'], ['overtime', 'Überstunden'], ['display', 'Anzeige'], ['mqtt', 'MQTT'], ['api', 'API'], ['backup', 'Backup']
+const SETTINGS_TABS: Array<[string, string, string]> = [
+  ['projects', 'Projekte', 'folder'], ['capture', 'Erfassung', 'activity'], ['meetings', 'Meetings', 'users'],
+  ['ai', 'KI', 'sparkles'], ['overtime', 'Überstunden', 'scale'], ['display', 'Anzeige', 'monitor'],
+  ['mqtt', 'MQTT', 'broadcast'], ['api', 'API', 'code'], ['backup', 'Backup', 'archive']
 ]
 
 function SettingsView() {
@@ -690,8 +691,8 @@ function SettingsView() {
     <div className="view settings">
       <div className="settings-body">
         <div className="settings-nav">
-          {SETTINGS_TABS.map(([k, l]) => (
-            <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
+          {SETTINGS_TABS.map(([k, l, ic]) => (
+            <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}><Icon name={ic} size={15} /> {l}</button>
           ))}
         </div>
         <div className="settings-pane scroll">
