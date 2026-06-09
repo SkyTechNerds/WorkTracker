@@ -147,7 +147,7 @@ export const UNASSIGNED = 'Nicht zugewiesen'
 
 export function defaultConfig(): AppConfig {
   return {
-    idleThresholdMinutes: 6,
+    idleThresholdMinutes: 15,
     sampleIntervalSeconds: 60,
     breakCapMinutes: 30,
     workdayStartHour: 6,
