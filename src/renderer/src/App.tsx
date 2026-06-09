@@ -331,9 +331,12 @@ function CalendarView() {
   const removeBreak = (id: string) => persist(segments.map(s => s.id === id ? { ...s, kind: 'work', ticket: null, note: null, project: null, meeting: undefined } : s))
 
   const isToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() === dateMs })()
-  // Aktuell laufender Block = letzter Arbeitsblock heute, wenn gerade gearbeitet wird.
-  const liveId = (isToday && status?.display === 'Arbeit')
-    ? segments.filter(s => s.kind === 'work').reduce<Seg | null>((a, s) => (!a || s.end > a.end ? s : a), null)?.id
+  // Aktuell laufender Block heute = letzter Arbeitsblock (wenn „Arbeitet")
+  // bzw. letzter Pausenblock (wenn „Pausiert").
+  const liveKind: 'work' | 'break' | null = isToday
+    ? (status?.display === 'Arbeit' ? 'work' : status?.display === 'Pause' ? 'break' : null) : null
+  const liveId = liveKind
+    ? segments.filter(s => s.kind === liveKind).reduce<Seg | null>((a, s) => (!a || s.end > a.end ? s : a), null)?.id
     : undefined
 
   return (
@@ -390,7 +393,7 @@ function CalendarView() {
               const isMeeting = s.kind === 'work' && !!s.meeting
               const isLive = s.id === liveId
               const baseTitle = s.kind === 'break' ? 'Pause' : (s.ticket || (isMeeting ? 'Meeting' : 'Arbeit'))
-              const title = isLive ? `${baseTitle} – aktiv` : baseTitle
+              const title = isLive ? `${baseTitle} – ${s.kind === 'break' ? 'läuft' : 'aktiv'}` : baseTitle
               const pc = s.kind === 'work' && !isMeeting ? projColor(s.project) : undefined
               const style: React.CSSProperties = { top, height }
               if (isMeeting) { style.background = 'var(--block-meeting)'; style.color = '#fff' }
