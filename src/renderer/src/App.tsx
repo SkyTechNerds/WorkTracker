@@ -160,6 +160,9 @@ function CalendarView() {
   const [rangeOpen, setRangeOpen] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMsg, setAiMsg] = useState('')
+  // Hover-Verknüpfung Sidebar <-> Kalender. Pause = eigenes Segment, Arbeit/Meeting = Ticket.
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
+  const segKey = (s: Seg) => s.kind === 'break' ? 's:' + s.id : 't:' + (s.ticket || UNASSIGNED)
   useEffect(() => {
     if (!exportOpen) return
     const h = () => setExportOpen(false)
@@ -413,8 +416,9 @@ function CalendarView() {
               if (isMeeting) { style.background = 'var(--block-meeting)'; style.color = '#fff' }
               else if (pc) { style.background = pc; style.color = contrastText(pc) }
               return (
-                <div key={s.id} className={`block ${s.kind} ${isLive ? 'live' : ''}`} style={style}
+                <div key={s.id} className={`block ${s.kind} ${isLive ? 'live' : ''} ${hoverKey === segKey(s) ? 'hl' : ''}`} style={style}
                   onPointerDown={e => onPointerDown(e, s, 'move')}
+                  onMouseEnter={() => setHoverKey(segKey(s))} onMouseLeave={() => setHoverKey(null)}
                   title={s.note ? `${title} — ${s.note}` : title}>
                   <div className="handle top" onPointerDown={e => onPointerDown(e, s, 'top')} />
                   <div className="row"><span className="title">{title}</span>{height >= 18 && <span className="time">{clock(s.start)}–{clock(s.end)}</span>}</div>
@@ -436,7 +440,8 @@ function CalendarView() {
                 <span className="secs">{hm(g.total)}</span>
               </div>
               {Object.entries(g.tickets).sort((a, b) => b[1] - a[1]).map(([tk, secs]) => (
-                <div key={tk} className={`ticket-row sub ${tk === UNASSIGNED ? 'unassigned' : ''}`}>
+                <div key={tk} className={`ticket-row sub ${tk === UNASSIGNED ? 'unassigned' : ''} ${hoverKey === 't:' + tk ? 'hl' : ''}`}
+                  onMouseEnter={() => setHoverKey('t:' + tk)} onMouseLeave={() => setHoverKey(null)}>
                   <span className="tk-name">{tk}</span>
                   <span className="secs">{hm(secs)}
                     <button className="row-act" title="Bearbeiten / Zeit hinzufügen" onClick={() => setAssignKey(tk)}><Icon name="pencil" size={13} /></button>
@@ -454,7 +459,8 @@ function CalendarView() {
                 <span className="secs">{hm(breakTotal)}</span>
               </div>
               {breaks.map(b => (
-                <div key={b.id} className="ticket-row sub">
+                <div key={b.id} className={`ticket-row sub ${hoverKey === 's:' + b.id ? 'hl' : ''}`}
+                  onMouseEnter={() => setHoverKey('s:' + b.id)} onMouseLeave={() => setHoverKey(null)}>
                   <span className="tk-name">{clock(b.start)}–{clock(b.end)}</span>
                   <span className="secs">{hm((b.end - b.start) / 1000)}
                     <button className="row-act" title="Pause bearbeiten" onClick={() => setEditing(b)}><Icon name="pencil" size={13} /></button>
