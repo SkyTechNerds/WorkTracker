@@ -138,7 +138,11 @@ button, input, select, textarea { font-family: inherit; }
 .ticket-row .tk { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .ticket-row .tk b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ticket-row .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.ticket-row .secs { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.ticket-row .secs { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.row-act { border: none; background: none; color: var(--muted); cursor: pointer; padding: 3px; border-radius: 5px; display: inline-flex; opacity: 0.65; }
+.ticket-row:hover .row-act { opacity: 1; }
+.row-act:hover { background: var(--hover); color: var(--accent); }
+.row-act.danger:hover { color: var(--neg); }
 .ticket-row.unassigned b { color: #c77700; }
 @media (prefers-color-scheme: dark) { .ticket-row.unassigned b { color: #ffb340; } }
 .ticket-group { border-bottom: 1px solid var(--line); }

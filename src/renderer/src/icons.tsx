@@ -28,7 +28,8 @@ const PATHS: Record<string, JSX.Element> = {
   monitor: <><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></>,
   broadcast: <><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none" /><path d="M8 8a6 6 0 0 0 0 8M16 16a6 6 0 0 0 0-8M5.2 5.2a10 10 0 0 0 0 13.6M18.8 18.8a10 10 0 0 0 0-13.6" /></>,
   code: <><path d="M8.5 7 3.5 12l5 5" /><path d="M15.5 7l5 5-5 5" /></>,
-  archive: <><rect x="3" y="4" width="18" height="4" rx="1" /><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" /><path d="M9.5 12h5" /></>
+  archive: <><rect x="3" y="4" width="18" height="4" rx="1" /><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" /><path d="M9.5 12h5" /></>,
+  trash: <><path d="M4 7h16" /><path d="M9.5 7V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2" /><path d="M6.5 7l.8 12a1 1 0 0 0 1 1h7.4a1 1 0 0 0 1-1l.8-12" /><path d="M10 11v6M14 11v6" /></>
 }
 
 export function Icon({ name, size = 16 }: { name: keyof typeof PATHS | string; size?: number }) {

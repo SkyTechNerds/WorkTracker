@@ -338,6 +338,11 @@ function CalendarView() {
   const breakTotal = breaks.reduce((a, s) => a + (s.end - s.start) / 1000, 0)
   // Pause „löschen" = in Arbeit umwandeln (verschmilzt mit Nachbarblöcken).
   const removeBreak = (id: string) => persist(segments.map(s => s.id === id ? { ...s, kind: 'work', ticket: null, note: null, project: null, meeting: undefined } : s))
+  // Ticket „löschen" = alle Blöcke dieses Tickets aus dem Tag entfernen.
+  const deleteTicket = (tk: string) => {
+    if (!window.confirm(`Alle Einträge von „${tk}" aus diesem Tag löschen?`)) return
+    persist(segments.filter(s => !(s.kind === 'work' && (s.ticket || UNASSIGNED) === tk)))
+  }
 
   const isToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() === dateMs })()
   // Aktuell laufender Block heute = letzter Arbeitsblock (wenn „Arbeitet")
@@ -431,9 +436,12 @@ function CalendarView() {
                 <span className="secs">{hm(g.total)}</span>
               </div>
               {Object.entries(g.tickets).sort((a, b) => b[1] - a[1]).map(([tk, secs]) => (
-                <div key={tk} className={`ticket-row sub ${tk === UNASSIGNED ? 'unassigned' : ''}`} onClick={() => setAssignKey(tk)} style={{ cursor: 'pointer' }}>
+                <div key={tk} className={`ticket-row sub ${tk === UNASSIGNED ? 'unassigned' : ''}`}>
                   <span className="tk-name">{tk}</span>
-                  <span className="secs">{hm(secs)} <Icon name="pencil" size={13} /></span>
+                  <span className="secs">{hm(secs)}
+                    <button className="row-act" title="Bearbeiten / Zeit hinzufügen" onClick={() => setAssignKey(tk)}><Icon name="pencil" size={13} /></button>
+                    <button className="row-act danger" title="Löschen" onClick={() => deleteTicket(tk)}><Icon name="trash" size={13} /></button>
+                  </span>
                 </div>
               ))}
             </div>
@@ -449,7 +457,8 @@ function CalendarView() {
                 <div key={b.id} className="ticket-row sub">
                   <span className="tk-name">{clock(b.start)}–{clock(b.end)}</span>
                   <span className="secs">{hm((b.end - b.start) / 1000)}
-                    <button className="rg-x" title="Pause entfernen (wird zu Arbeitszeit)" onClick={() => removeBreak(b.id)}>✕</button>
+                    <button className="row-act" title="Pause bearbeiten" onClick={() => setEditing(b)}><Icon name="pencil" size={13} /></button>
+                    <button className="row-act danger" title="Pause löschen (wird zu Arbeitszeit)" onClick={() => removeBreak(b.id)}><Icon name="trash" size={13} /></button>
                   </span>
                 </div>
               ))}
