@@ -10,17 +10,35 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "package": "electron-vite build && electron-builder",
-    "package:mac": "electron-vite build && electron-builder --mac dir --config.mac.identity=null"
+    "package:mac": "electron-vite build && electron-builder --mac",
+    "package:win": "electron-vite build && electron-builder --win",
+    "package:all": "electron-vite build && electron-builder --mac --win"
   },
   "build": {
     "appId": "com.skytechnerds.worktracker",
     "productName": "WorkTracker",
-    "directories": { "output": "dist" },
+    "afterPack": "build/afterPack.cjs",
+    "directories": { "output": "dist", "buildResources": "build" },
     "files": ["out/**/*", "package.json"],
+    "publish": [{ "provider": "github", "owner": "SkyTechNerds", "repo": "WorkTracker" }],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": "dir",
+      "target": [{ "target": "dmg", "arch": "arm64" }],
+      "icon": "build/icon.icns",
+      "identity": null,
       "extendInfo": { "LSUIElement": true }
+    },
+    "dmg": { "title": "WorkTracker ${version}" },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "WorkTracker"
     }
   },
   "devDependencies": {
