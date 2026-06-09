@@ -421,7 +421,7 @@ function CalendarView() {
                   onMouseEnter={() => setHoverKey(segKey(s))} onMouseLeave={() => setHoverKey(null)}
                   title={s.note ? `${title} — ${s.note}` : title}>
                   <div className="handle top" onPointerDown={e => onPointerDown(e, s, 'top')} />
-                  <div className="row"><span className="title">{title}</span>{height >= 18 && <span className="time">{clock(s.start)}–{clock(s.end)}</span>}</div>
+                  <div className="blk-row"><span className="title">{title}</span>{height >= 18 && <span className="time">{clock(s.start)}–{clock(s.end)}</span>}</div>
                   {height >= 42 && s.note && <div className="note">{s.note}</div>}
                   <div className="handle bottom" onPointerDown={e => onPointerDown(e, s, 'bottom')} />
                 </div>
