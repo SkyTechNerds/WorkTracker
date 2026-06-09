@@ -357,7 +357,7 @@ function CalendarView() {
         <b>{new Date(dateMs).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' })}</b>
         {summary?.materialized && <span className="metric edited"><Icon name="pencil" size={13} /> bearbeitet
           <button className="ico reset-btn" title="Auf automatische Erfassung zurücksetzen (manuelle Änderungen verwerfen)"
-            onClick={async () => { await window.wt.resetDay(dateMs); load() }}><Icon name="reset" size={14} /></button></span>}
+            onClick={async () => { if (!window.confirm('Diesen Tag auf automatische Erfassung zurücksetzen? Alle manuellen Einträge/Zuweisungen dieses Tages gehen verloren.')) return; await window.wt.resetDay(dateMs); load() }}><Icon name="reset" size={14} /></button></span>}
         <div className="spacer" />
         {summary && <>
           <span className="metric"><Icon name="clock" /> {summary.start ? clock(summary.start) : '–'}–{summary.end ? clock(summary.end) : '–'}</span>
