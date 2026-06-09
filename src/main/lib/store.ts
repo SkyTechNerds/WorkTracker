@@ -109,7 +109,8 @@ export function loadStoredSegments(d: Date | number): Segment[] | null {
 }
 
 export function saveSegments(d: Date | number, segs: Segment[]) {
-  const sorted = [...segs].sort((a, b) => a.start - b.start)
+  // Schutz: Segmente ohne positive Dauer (Null/negativ) verwerfen -> keine kaputten Einträge.
+  const sorted = segs.filter(s => s.end > s.start).sort((a, b) => a.start - b.start)
   try { fs.writeFileSync(editsFile(d), JSON.stringify(sorted, null, 2)) } catch { /* ignore */ }
 }
 
