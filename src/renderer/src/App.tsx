@@ -319,6 +319,11 @@ function CalendarView() {
     return Object.values(map).sort((a, b) => b.total - a.total)
   })()
 
+  const breaks = segments.filter(s => s.kind === 'break' && s.end > s.start).sort((a, b) => a.start - b.start)
+  const breakTotal = breaks.reduce((a, s) => a + (s.end - s.start) / 1000, 0)
+  // Pause „löschen" = in Arbeit umwandeln (verschmilzt mit Nachbarblöcken).
+  const removeBreak = (id: string) => persist(segments.map(s => s.id === id ? { ...s, kind: 'work', ticket: null, note: null, project: null, meeting: undefined } : s))
+
   const isToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() === dateMs })()
 
   return (
@@ -409,6 +414,23 @@ function CalendarView() {
               ))}
             </div>
           ))}
+
+          {breaks.length > 0 && (
+            <div className="ticket-group">
+              <div className="group-head">
+                <span className="tk"><span className="dot" style={{ background: 'var(--block-break)' }} /><b>Pausen</b></span>
+                <span className="secs">{hm(breakTotal)}</span>
+              </div>
+              {breaks.map(b => (
+                <div key={b.id} className="ticket-row sub">
+                  <span className="tk-name">{clock(b.start)}–{clock(b.end)}</span>
+                  <span className="secs">{hm((b.end - b.start) / 1000)}
+                    <button className="rg-x" title="Pause entfernen (wird zu Arbeitszeit)" onClick={() => removeBreak(b.id)}>✕</button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
