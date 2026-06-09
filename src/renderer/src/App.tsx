@@ -195,14 +195,18 @@ function CalendarView() {
   const persist = async (segs: Seg[]) => { await window.wt.saveSegments(dateMs, segs); await load() }
 
   // ---- Drag (move / resize) ----
-  const drag = useRef<null | { id: string; mode: 'move' | 'top' | 'bottom'; origStart: number; origEnd: number; startY: number; moved: boolean }>(null)
+  const drag = useRef<null | { id: string; mode: 'move' | 'top' | 'bottom'; origStart: number; origEnd: number; startY: number; moved: boolean; neighborId: string | null }>(null)
   const [, force] = useState(0)
 
   const snapMs = (ms: number) => Math.round(ms / (snapMin * 60000)) * (snapMin * 60000)
 
   const onPointerDown = (e: React.PointerEvent, seg: Seg, mode: 'move' | 'top' | 'bottom') => {
     e.stopPropagation()
-    drag.current = { id: seg.id, mode, origStart: seg.start, origEnd: seg.end, startY: e.clientY, moved: false }
+    // Angrenzenden Block an der gezogenen Grenze merken (für verknüpftes Resizen).
+    let neighborId: string | null = null
+    if (mode === 'bottom') neighborId = segments.find(s => s.id !== seg.id && Math.abs(s.start - seg.end) < 1000)?.id ?? null
+    else if (mode === 'top') neighborId = segments.find(s => s.id !== seg.id && Math.abs(s.end - seg.start) < 1000)?.id ?? null
+    drag.current = { id: seg.id, mode, origStart: seg.start, origEnd: seg.end, startY: e.clientY, moved: false, neighborId }
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
   }
@@ -214,25 +218,30 @@ function CalendarView() {
     const MIN = 5 * 60000
     const dayStart = dateMs, dayEnd = dateMs + 86400000
     setSegments(prev => {
-      // Grenzen aus den Nachbar-Segmenten – Blöcke dürfen sich nicht überlagern.
       const others = prev.filter(s => s.id !== d.id)
       const below = others.filter(s => s.end <= d.origStart + 1).reduce((m, s) => Math.max(m, s.end), dayStart)
       const above = others.filter(s => s.start >= d.origEnd - 1).reduce((m, s) => Math.min(m, s.start), dayEnd)
-      return prev.map(s => {
-        if (s.id !== d.id) return s
-        if (d.mode === 'move') {
-          const dur = d.origEnd - d.origStart
-          let ns = d.origStart + ds
-          ns = Math.max(below, Math.min(ns, above - dur))
-          return { ...s, start: ns, end: ns + dur }
-        }
-        if (d.mode === 'top') {
-          const ns = Math.max(below, Math.min(d.origStart + ds, d.origEnd - MIN))
-          return { ...s, start: ns }
-        }
-        const ne = Math.min(above, Math.max(d.origEnd + ds, d.origStart + MIN))
-        return { ...s, end: ne }
-      })
+      const neighbor = d.neighborId ? prev.find(s => s.id === d.neighborId) : undefined
+
+      if (d.mode === 'move') {
+        const dur = d.origEnd - d.origStart
+        const ns = Math.max(below, Math.min(d.origStart + ds, above - dur))
+        return prev.map(s => s.id === d.id ? { ...s, start: ns, end: ns + dur } : s)
+      }
+      if (d.mode === 'top') {
+        // Grenze nach oben ziehen: dragged.start + ggf. Vorgänger.end bewegen sich gemeinsam.
+        const lower = neighbor ? neighbor.start + MIN : below
+        const boundary = Math.max(lower, Math.min(d.origStart + ds, d.origEnd - MIN))
+        return prev.map(s =>
+          s.id === d.id ? { ...s, start: boundary }
+            : (neighbor && s.id === neighbor.id ? { ...s, end: boundary } : s))
+      }
+      // bottom: dragged.end + ggf. Nachfolger.start bewegen sich gemeinsam.
+      const upper = neighbor ? neighbor.end - MIN : above
+      const boundary = Math.min(upper, Math.max(d.origEnd + ds, d.origStart + MIN))
+      return prev.map(s =>
+        s.id === d.id ? { ...s, end: boundary }
+          : (neighbor && s.id === neighbor.id ? { ...s, start: boundary } : s))
     })
     force(x => x + 1)
   }
