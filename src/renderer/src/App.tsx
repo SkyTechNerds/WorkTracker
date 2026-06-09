@@ -430,7 +430,7 @@ function CalendarView() {
               if (isMeeting) { style.background = 'var(--block-meeting)'; style.color = '#fff' }
               else if (pc) { style.background = pc; style.color = contrastText(pc) }
               return (
-                <div key={s.id} className={`block ${s.kind} ${isLive ? 'live' : ''} ${hoverKey ? (hoverKey === segKey(s) ? 'hl' : 'dim') : ''}`} style={style}
+                <div key={isLive ? '__live' : s.id} className={`block ${s.kind} ${isLive ? 'live' : ''} ${hoverKey ? (hoverKey === segKey(s) ? 'hl' : 'dim') : ''}`} style={style}
                   onPointerDown={e => onPointerDown(e, s, 'move')}
                   onMouseEnter={() => { setHoverKey(segKey(s)); setHoverColor(colorForSeg(s)) }} onMouseLeave={() => setHoverKey(null)}
                   title={s.note ? `${title} — ${s.note}` : title}>
