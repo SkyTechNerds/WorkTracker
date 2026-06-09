@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # release.sh [patch|minor|major|x.y.z]
 # Bumpt die Version, baut Mac-DMG + Windows-NSIS, taggt und legt den GitHub-Release
-# mit automatisch generiertem Changelog (Commits seit dem letzten Tag) an.
+# mit automatisch generiertem Changelog (Commits seit dem letzten Release) an.
 set -e
 cd "$(dirname "$0")"
 
 BUMP="${1:-patch}"
-PREV=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-NEW=$(npm version "$BUMP" --no-git-tag-version | tail -1)   # z. B. v0.2.2
+# Letzten GitHub-Release als Basis (Fallback: letzter Git-Tag)
+PREV=$(gh release view --repo SkyTechNerds/WorkTracker --json tagName --jq '.tagName' 2>/dev/null || true)
+[ -z "$PREV" ] && PREV=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+NEW=$(npm version "$BUMP" --no-git-tag-version | tail -1)   # z. B. v0.2.3
 VER="${NEW#v}"
-echo "→ Release $NEW (vorher: ${PREV:-keiner})"
+echo "→ Release $NEW (letzter Release: ${PREV:-keiner})"
 
-# Changelog aus Commit-Nachrichten seit dem letzten Tag
+# Changelog aus Commit-Nachrichten seit dem letzten Release
 NOTES=$(mktemp)
 {
   echo "## Änderungen"
