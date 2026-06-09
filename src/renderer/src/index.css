@@ -107,7 +107,7 @@ button, input, select, textarea { font-family: inherit; }
 .block.work { background: var(--block-work); }
 .block.break { background: var(--block-break); color: var(--text); box-shadow: none; border: 1px solid var(--line); }
 .block .row { display: flex; gap: 6px; align-items: baseline; }
-.block .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.block .title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .block .time { margin-left: auto; font-size: 11px; opacity: .92; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .block .note { font-size: 11px; opacity: .88; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 .block.live { z-index: 2; animation: live-glow 1.6s ease-in-out infinite; }
