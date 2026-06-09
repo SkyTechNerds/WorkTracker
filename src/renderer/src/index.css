@@ -126,7 +126,7 @@ button, input, select, textarea { font-family: inherit; }
 .block.dim { opacity: 0.22; }
 .block.hl { z-index: 5; filter: brightness(1.12); box-shadow: 0 0 0 2px var(--panel-strong), 0 0 0 4px var(--accent), 0 4px 12px rgba(0,0,0,0.35); }
 .ticket-row.dim { opacity: 0.38; }
-.ticket-row.hl, .ticket-row.sub.hl { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.ticket-row.hl, .ticket-row.sub.hl { background: color-mix(in srgb, var(--hl-color, var(--accent)) 24%, transparent); box-shadow: inset 3px 0 0 var(--hl-color, var(--accent)); }
 .block .handle { position: absolute; left: 0; right: 0; height: 10px; cursor: ns-resize; z-index: 3; }
 .block .handle.top { top: 0; }
 .block .handle.bottom { bottom: 0; }

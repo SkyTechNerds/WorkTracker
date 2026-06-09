@@ -162,6 +162,7 @@ function CalendarView() {
   const [aiMsg, setAiMsg] = useState('')
   // Hover-Verknüpfung Sidebar <-> Kalender. Pause = eigenes Segment, Arbeit/Meeting = Ticket.
   const [hoverKey, setHoverKey] = useState<string | null>(null)
+  const [hoverColor, setHoverColor] = useState<string | null>(null)
   const segKey = (s: Seg) => s.kind === 'break' ? 's:' + s.id : 't:' + (s.ticket || UNASSIGNED)
   useEffect(() => {
     if (!exportOpen) return
@@ -328,6 +329,8 @@ function CalendarView() {
   const { workdayStartHour: sh, workdayEndHour: eh } = cfg
   const yOff = (ms: number) => { const d = new Date(ms); return ((d.getHours() * 60 + d.getMinutes()) - sh * 60) / 60 * HOUR_H }
   const projColor = (name?: string | null) => name ? cfg.projects.find(p => p.name === name)?.color : undefined
+  // Kategorie-Farbe eines Segments (deckungsgleich mit Block-Hintergrund + Gruppenfarbe).
+  const colorForSeg = (s: Seg) => s.kind === 'break' ? 'var(--block-break)' : s.meeting ? 'var(--block-meeting)' : (projColor(s.project) || 'var(--block-work)')
 
   // Nach Projekt/Kunde gruppieren, je Gruppe die Tickets einzeln.
   const ticketGroups = (() => {
@@ -368,7 +371,7 @@ function CalendarView() {
     : undefined
 
   return (
-    <div className="view">
+    <div className="view" style={hoverColor ? ({ '--hl-color': hoverColor } as React.CSSProperties) : undefined}>
       <div className="topbar">
         <button className="ico" title="Vorheriger Tag" onClick={() => setDateMs(dateMs - 86400000)}><Icon name="chevronL" /></button>
         <button className="ico" title="Heute" onClick={() => { const d = new Date(); d.setHours(0, 0, 0, 0); setDateMs(d.getTime()) }}><Icon name="today" /></button>
@@ -429,7 +432,7 @@ function CalendarView() {
               return (
                 <div key={s.id} className={`block ${s.kind} ${isLive ? 'live' : ''} ${hoverKey ? (hoverKey === segKey(s) ? 'hl' : 'dim') : ''}`} style={style}
                   onPointerDown={e => onPointerDown(e, s, 'move')}
-                  onMouseEnter={() => setHoverKey(segKey(s))} onMouseLeave={() => setHoverKey(null)}
+                  onMouseEnter={() => { setHoverKey(segKey(s)); setHoverColor(colorForSeg(s)) }} onMouseLeave={() => setHoverKey(null)}
                   title={s.note ? `${title} — ${s.note}` : title}>
                   <div className="handle top" onPointerDown={e => onPointerDown(e, s, 'top')} />
                   <div className="blk-row"><span className="title">{title}</span>{height >= 18 && <span className="time">{clock(s.start)}–{clock(s.end)}</span>}</div>
@@ -452,7 +455,7 @@ function CalendarView() {
               </div>
               {Object.entries(g.tickets).sort((a, b) => b[1] - a[1]).map(([tk, secs]) => (
                 <div key={tk} className={`ticket-row sub ${tk === UNASSIGNED ? 'unassigned' : ''} ${hoverKey ? (hoverKey === 't:' + tk ? 'hl' : 'dim') : ''}`}
-                  onMouseEnter={() => setHoverKey('t:' + tk)} onMouseLeave={() => setHoverKey(null)}>
+                  onMouseEnter={() => { setHoverKey('t:' + tk); setHoverColor(g.color) }} onMouseLeave={() => setHoverKey(null)}>
                   <span className="tk-name">{tk}</span>
                   <span className="secs">{hm(secs)}
                     <button className="row-act" title="Bearbeiten / Zeit hinzufügen" onClick={() => setAssignKey(tk)}><Icon name="pencil" size={13} /></button>
@@ -471,7 +474,7 @@ function CalendarView() {
               </div>
               {breaks.map(b => (
                 <div key={b.id} className={`ticket-row sub ${hoverKey ? (hoverKey === 's:' + b.id ? 'hl' : 'dim') : ''}`}
-                  onMouseEnter={() => setHoverKey('s:' + b.id)} onMouseLeave={() => setHoverKey(null)}>
+                  onMouseEnter={() => { setHoverKey('s:' + b.id); setHoverColor('var(--block-break)') }} onMouseLeave={() => setHoverKey(null)}>
                   <span className="tk-name">{clock(b.start)}–{clock(b.end)}</span>
                   <span className="secs">{hm((b.end - b.start) / 1000)}
                     <button className="row-act" title="Pause bearbeiten" onClick={() => setEditing(b)}><Icon name="pencil" size={13} /></button>
