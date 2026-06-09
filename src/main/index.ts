@@ -1,6 +1,6 @@
 // Electron-Haupteinstieg: Tray, Fenster, IPC, Tracker, Teams-Client.
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, Notification, dialog } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, Notification, dialog, nativeTheme } from 'electron'
 import path from 'node:path'
 import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegments, resetToAuto, setDayEnded, clearDayEnded, isDayEnded } from './lib/store'
 import { Tracker } from './lib/tracker'
@@ -73,6 +73,8 @@ function openPopup(kind: 'prompt' | 'meeting', payload: Record<string, string>) 
     width: 360, height: kind === 'meeting' ? 272 : 210,
     resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
     alwaysOnTop: true, skipTaskbar: true, title: 'WorkTracker',
+    // Hintergrund themengerecht – sonst weiße Defaultfarbe (Dark Mode: weiß auf weiß).
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#2c2c2e' : '#f5f5f7',
     webPreferences: { preload: path.join(__dirname, '../preload/index.js'), sandbox: false }
   })
   popup.on('closed', () => { popup = null })
