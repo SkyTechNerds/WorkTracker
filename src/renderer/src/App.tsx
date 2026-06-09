@@ -24,6 +24,9 @@ declare global {
       popupResult: (kind: string, value: string) => Promise<any>
       mqttTest: (mq: MqttConfig) => Promise<{ ok: boolean; error?: string }>
       mqttStatus: () => Promise<{ connected: boolean; status: string }>
+      exportBackup: () => Promise<{ ok: boolean; file?: string; error?: string }>
+      importBackup: () => Promise<{ ok: boolean; error?: string }>
+      backupNow: () => Promise<{ ok: boolean; file?: string; error?: string }>
       aiTest: (ai: AiConfig) => Promise<{ ok: boolean; error?: string }>
       aiModels: (ai: AiConfig) => Promise<{ models: string[]; error?: string }>
       aiAssignDay: (dateMs: number) => Promise<{ count: number; error?: string }>
@@ -59,6 +62,7 @@ interface Cfg {
   mqtt: MqttConfig
   ai: AiConfig
   apiServer: ApiServerConfig
+  backup: BackupConfig
 }
 interface MqttPublishFlags {
   status: boolean; inCall: boolean; callTitle: boolean; workedToday: boolean
@@ -83,6 +87,7 @@ const AI_KEY_URL: Record<AiProvider, string> = {
 }
 const AI_PROVIDER_LABEL: Record<AiProvider, string> = { gemini: 'Google Gemini', openai: 'OpenAI', minimax: 'MiniMax' }
 interface ApiServerConfig { enabled: boolean; port: number; token: string }
+interface BackupConfig { auto: boolean; intervalHours: number; folder: string; keep: number }
 interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean }
 interface OvertimeResult { balanceHours: number; days: OvertimeDay[] }
 
@@ -99,7 +104,8 @@ const DEFAULT_CFG: Cfg = {
     publish: { status: true, inCall: true, callTitle: true, workedToday: true, breakToday: false, overtimeBalance: true, workedWeek: true, currentTicket: false }
   },
   ai: { enabled: false, provider: 'gemini', apiKey: '', model: 'gemini-2.5-flash' },
-  apiServer: { enabled: false, port: 8787, token: '' }
+  apiServer: { enabled: false, port: 8787, token: '' },
+  backup: { auto: false, intervalHours: 24, folder: '', keep: 14 }
 }
 
 function hm(seconds: number): string {
@@ -645,7 +651,7 @@ const WEEKDAYS = [['So', 1], ['Mo', 2], ['Di', 3], ['Mi', 4], ['Do', 5], ['Fr', 
 
 const SETTINGS_TABS: Array<[string, string]> = [
   ['projects', 'Projekte'], ['capture', 'Erfassung'], ['meetings', 'Meetings'],
-  ['ai', 'KI'], ['overtime', 'Überstunden'], ['display', 'Anzeige'], ['mqtt', 'MQTT'], ['api', 'API']
+  ['ai', 'KI'], ['overtime', 'Überstunden'], ['display', 'Anzeige'], ['mqtt', 'MQTT'], ['api', 'API'], ['backup', 'Backup']
 ]
 
 function SettingsView() {
@@ -757,6 +763,8 @@ function SettingsView() {
           {tab === 'mqtt' && <MqttSection mqtt={cfg.mqtt} onChange={m => set('mqtt', m)} />}
 
           {tab === 'api' && <ApiSection api={cfg.apiServer} onChange={a => set('apiServer', a)} />}
+
+          {tab === 'backup' && <BackupSection backup={cfg.backup} onChange={b => set('backup', b)} />}
         </div>
       </div>
 
@@ -873,6 +881,44 @@ function AiSection({ ai, onChange }: { ai: AiConfig; onChange: (a: AiConfig) => 
           <span className="hint" style={{ margin: 0 }}>{test}</span>
         </div>
       </>}
+    </section>
+  )
+}
+
+function BackupSection({ backup, onChange }: { backup: BackupConfig; onChange: (b: BackupConfig) => void }) {
+  const [msg, setMsg] = useState('')
+  const set = <K extends keyof BackupConfig>(k: K, v: BackupConfig[K]) => onChange({ ...backup, [k]: v })
+  const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 4500) }
+  const doExport = async () => { const r = await window.wt.exportBackup(); if (r.ok) flash('✓ Exportiert: ' + (r.file || '')); else if (r.error) flash('✕ ' + r.error) }
+  const doImport = async () => { const r = await window.wt.importBackup(); if (r.ok) { setMsg('✓ Importiert – lade neu…'); setTimeout(() => location.reload(), 800) } else if (r.error) flash('✕ ' + r.error) }
+  const pick = async () => { const dir = await window.wt.pickFolder(); if (dir) set('folder', dir) }
+  const backupNow = async () => { const r = await window.wt.backupNow(); flash(r.ok ? '✓ Gesichert: ' + r.file : '✕ ' + (r.error || 'kein Ordner')) }
+  return (
+    <section>
+      <h3>Backup & Wiederherstellung</h3>
+      <p className="hint">Sichert Zeiten, Tickets, Tagesbearbeitungen und Einstellungen in eine Datei – für den Umzug auf einen neuen Rechner oder zur Sicherheit.</p>
+      <div className="row" style={{ justifyContent: 'flex-start', gap: 10 }}>
+        <button className="add" onClick={doExport}>Jetzt exportieren…</button>
+        <button className="add" onClick={doImport}>Importieren…</button>
+      </div>
+
+      <h3 style={{ marginTop: 20 }}>Automatische Backups</h3>
+      <label className="row check"><input type="checkbox" checked={backup.auto} onChange={e => set('auto', e.target.checked)} /> Automatisch sichern</label>
+      {backup.auto && <>
+        <label className="row">Intervall (Stunden) <input type="number" min={1} value={backup.intervalHours} onChange={e => set('intervalHours', Number(e.target.value))} /></label>
+        <label className="row">Sicherungen behalten <input type="number" min={1} value={backup.keep} onChange={e => set('keep', Number(e.target.value))} /></label>
+        <div className="row">Zielordner
+          <span style={{ display: 'flex', gap: 6, flex: 1 }}>
+            <input style={{ flex: 1 }} readOnly value={backup.folder} placeholder="– kein Ordner gewählt –" />
+            <button className="add" onClick={pick}>Ordner…</button>
+          </span>
+        </div>
+        <div className="row" style={{ justifyContent: 'flex-start' }}>
+          <button className="add" onClick={backupNow} disabled={!backup.folder}>Jetzt sichern</button>
+        </div>
+        <p className="hint">Nach „Speichern" greift das Intervall. Es werden die letzten {backup.keep} Sicherungen behalten, ältere automatisch gelöscht.</p>
+      </>}
+      {msg && <p className="hint" style={{ color: msg.startsWith('✓') ? 'var(--pos)' : 'var(--neg)' }}>{msg}</p>}
     </section>
   )
 }

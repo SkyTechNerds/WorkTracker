@@ -25,6 +25,9 @@ const api = {
   aiTest: (ai: any) => ipcRenderer.invoke('ai-test', ai),
   aiModels: (ai: any) => ipcRenderer.invoke('ai-models', ai),
   aiAssignDay: (dateMs: number) => ipcRenderer.invoke('ai-assign-day', dateMs),
+  exportBackup: () => ipcRenderer.invoke('export-backup'),
+  importBackup: () => ipcRenderer.invoke('import-backup'),
+  backupNow: () => ipcRenderer.invoke('backup-now'),
   onTick: (cb: () => void) => {
     const h = () => cb()
     ipcRenderer.on('tick', h)

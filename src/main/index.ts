@@ -13,6 +13,7 @@ import { reportMarkdown, reportCsv } from './lib/report'
 import { MqttPublisher, WTSnapshot } from './lib/mqtt'
 import { assignTicketsForDay, testAi, listModels } from './lib/ai'
 import { ApiServer } from './lib/apiServer'
+import { exportToFile, readBundleFile, restoreBundle, autoBackupTo } from './lib/backup'
 import fs from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { trayIconWork, trayIconPause, trayIconOff } from './lib/trayIcon'
@@ -49,6 +50,15 @@ let teams: TeamsClient
 let mqtt: MqttPublisher
 let apiServer: ApiServer
 let config: AppConfig
+
+let backupTimer: NodeJS.Timeout | undefined
+function applyBackupTimer() {
+  if (backupTimer) { clearInterval(backupTimer); backupTimer = undefined }
+  if (config.backup?.auto && config.backup.folder) {
+    const ms = Math.max(1, config.backup.intervalHours) * 3600_000
+    backupTimer = setInterval(() => autoBackupTo(config.backup.folder, config.backup.keep), ms)
+  }
+}
 
 /** API-Server (neu) konfigurieren – Token sicherstellen, wenn aktiviert. */
 function applyApiServer() {
@@ -242,6 +252,7 @@ function setupIpc() {
     applyLaunchAtLogin(c.launchAtLogin)
     mqtt.configure(c.mqtt); publishMqtt()
     applyApiServer()
+    applyBackupTimer()
     return config
   })
   ipcMain.handle('get-day', (_e, dateMs: number) => {
@@ -282,6 +293,32 @@ function setupIpc() {
   ipcMain.handle('mqtt-status', () => ({ connected: mqtt.connected, status: mqtt.statusText }))
   ipcMain.handle('ai-test', (_e, ai) => testAi(ai))
   ipcMain.handle('ai-models', (_e, ai) => listModels(ai))
+
+  ipcMain.handle('export-backup', async () => {
+    const day = new Date().toLocaleDateString('sv-SE')
+    const r = await dialog.showSaveDialog({ defaultPath: `worktracker-backup-${day}.json`, filters: [{ name: 'WorkTracker Backup', extensions: ['json'] }] })
+    if (r.canceled || !r.filePath) return { ok: false }
+    try { exportToFile(r.filePath); return { ok: true, file: r.filePath } } catch (e: any) { return { ok: false, error: String(e?.message || e) } }
+  })
+  ipcMain.handle('import-backup', async () => {
+    const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'WorkTracker Backup', extensions: ['json'] }] })
+    if (r.canceled || !r.filePaths[0]) return { ok: false }
+    const confirm = await dialog.showMessageBox({
+      type: 'warning', buttons: ['Abbrechen', 'Überschreiben'], defaultId: 0, cancelId: 0,
+      message: 'Sicherung importieren?', detail: 'Die aktuellen Daten (Zeiten, Tickets, Einstellungen) werden mit der Sicherung überschrieben.'
+    })
+    if (confirm.response !== 1) return { ok: false }
+    try {
+      const res = restoreBundle(readBundleFile(r.filePaths[0]))
+      if (!res.ok) return res
+      // Laufenden Zustand neu laden
+      config = loadConfig(); tracker.setConfig(config)
+      applyLaunchAtLogin(config.launchAtLogin); mqtt.configure(config.mqtt); applyApiServer(); applyBackupTimer()
+      refreshTray(); win?.webContents.send('tick'); win?.webContents.send('config-changed')
+      return { ok: true }
+    } catch (e: any) { return { ok: false, error: String(e?.message || e) } }
+  })
+  ipcMain.handle('backup-now', () => autoBackupTo(config.backup.folder, config.backup.keep))
   ipcMain.handle('ai-assign-day', async (_e, dateMs: number) => {
     const segs = deriveDay(dateMs, Date.now(), graceSeconds())
     const dayStart = startOfDay(dateMs)
@@ -358,6 +395,7 @@ app.whenReady().then(() => {
   if (config.detectTeamsApi) teams.start()
   if (config.mqtt?.enabled) mqtt.configure(config.mqtt)
   applyApiServer()
+  applyBackupTimer()
 
   // Update-Check beim Start und alle 6 Stunden.
   setTimeout(() => doCheckUpdate(false), 8000)

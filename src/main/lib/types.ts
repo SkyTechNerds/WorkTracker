@@ -69,6 +69,19 @@ export interface AppConfig {
   ai: AiConfig
   // Lokaler HTTP-API-Endpunkt (Steuerung von außen)
   apiServer: ApiServerConfig
+  // Backup (Export/Import + automatisch)
+  backup: BackupConfig
+}
+
+export interface BackupConfig {
+  auto: boolean
+  intervalHours: number
+  folder: string
+  keep: number
+}
+
+export function defaultBackupConfig(): BackupConfig {
+  return { auto: false, intervalHours: 24, folder: '', keep: 14 }
 }
 
 export interface ApiServerConfig {
@@ -165,7 +178,8 @@ export function defaultConfig(): AppConfig {
     projects: [],
     mqtt: defaultMqttConfig(),
     ai: defaultAiConfig(),
-    apiServer: defaultApiServerConfig()
+    apiServer: defaultApiServerConfig(),
+    backup: defaultBackupConfig()
   }
 }
 
