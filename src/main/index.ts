@@ -269,7 +269,7 @@ function setupIpc() {
   ipcMain.handle('pause-work', () => { tracker.pauseWork(); refreshTray(); return true })
 
   ipcMain.handle('pick-folder', async () => {
-    const r = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return r.canceled ? null : r.filePaths[0]
   })
   ipcMain.handle('git-emails', (_e, repoPath: string) => { try { return gitEmails(repoPath) } catch { return [] } })
