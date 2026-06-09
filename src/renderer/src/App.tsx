@@ -331,6 +331,10 @@ function CalendarView() {
   const removeBreak = (id: string) => persist(segments.map(s => s.id === id ? { ...s, kind: 'work', ticket: null, note: null, project: null, meeting: undefined } : s))
 
   const isToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() === dateMs })()
+  // Aktuell laufender Block = letzter Arbeitsblock heute, wenn gerade gearbeitet wird.
+  const liveId = (isToday && status?.display === 'Arbeit')
+    ? segments.filter(s => s.kind === 'work').reduce<Seg | null>((a, s) => (!a || s.end > a.end ? s : a), null)?.id
+    : undefined
 
   return (
     <div className="view">
@@ -390,7 +394,7 @@ function CalendarView() {
               if (isMeeting) { style.background = 'var(--block-meeting)'; style.color = '#fff' }
               else if (pc) { style.background = pc; style.color = contrastText(pc) }
               return (
-                <div key={s.id} className={`block ${s.kind}`} style={style}
+                <div key={s.id} className={`block ${s.kind} ${s.id === liveId ? 'live' : ''}`} style={style}
                   onPointerDown={e => onPointerDown(e, s, 'move')}
                   title={s.note ? `${title} — ${s.note}` : title}>
                   <div className="handle top" onPointerDown={e => onPointerDown(e, s, 'top')} />
