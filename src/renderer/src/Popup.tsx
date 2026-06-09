@@ -30,19 +30,26 @@ function PromptPopup() {
 
 function MeetingPopup({ from, to }: { from: number; to: number }) {
   const [title, setTitle] = useState('')
-  const submit = () => window.wt.popupResult('meeting', title.trim() || 'Meeting')
+  const [f, setF] = useState(clock(from))
+  const [t, setT] = useState(clock(to))
+  const payload = () => ({ from: f, to: t })
+  const submit = () => window.wt.popupResult('meeting', title.trim() || 'Meeting', payload())
   return (
     <div className="popup">
       <h2>Meeting beendet</h2>
-      <p className="sub">{clock(from)}–{clock(to)} · Titel vergeben (optional)</p>
+      <p className="sub">Zeitraum prüfen + Titel vergeben (optional)</p>
+      <div className="popup-times">
+        <label>Von <input type="time" value={f} onChange={e => setF(e.target.value)} /></label>
+        <label>Bis <input type="time" value={t} onChange={e => setT(e.target.value)} /></label>
+      </div>
       <input autoFocus value={title} placeholder="z. B. Daily, Sprint Review…"
         onChange={e => setTitle(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') submit() }} />
-      <button className="link-danger" onClick={() => window.wt.popupResult('meeting', '__none__')}>
+      <button className="link-danger" onClick={() => window.wt.popupResult('meeting', '__none__', payload())}>
         War kein Meeting – als normale Arbeitszeit zählen
       </button>
       <div className="popup-actions">
-        <button onClick={() => window.wt.popupResult('meeting', 'Meeting')}>Überspringen</button>
+        <button onClick={() => window.wt.popupResult('meeting', 'Meeting', payload())}>Überspringen</button>
         <span style={{ flex: 1 }} />
         <button className="primary" onClick={submit}>Übernehmen</button>
       </div>

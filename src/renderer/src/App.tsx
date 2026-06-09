@@ -21,7 +21,7 @@ declare global {
       checkUpdate: () => Promise<any>
       openExternal: (url: string) => Promise<any>
       appVersion: () => Promise<string>
-      popupResult: (kind: string, value: string) => Promise<any>
+      popupResult: (kind: string, value: string, payload?: { from?: string; to?: string }) => Promise<any>
       mqttTest: (mq: MqttConfig) => Promise<{ ok: boolean; error?: string }>
       mqttStatus: () => Promise<{ connected: boolean; status: string }>
       exportBackup: () => Promise<{ ok: boolean; file?: string; error?: string }>

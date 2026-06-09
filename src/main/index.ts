@@ -75,12 +75,16 @@ let lastPromptDay = ''
 
 const graceSeconds = () => Math.max(180, 2 * config.sampleIntervalSeconds)
 const startOfDay = (ms: number) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime() }
+const hhmmToMs = (dayBase: number, hhmm: string): number | null => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || ''); if (!m) return null
+  const d = new Date(dayBase); d.setHours(Number(m[1]), Number(m[2]), 0, 0); return d.getTime()
+}
 const dayStr = (ms: number) => new Date(ms).toLocaleDateString('sv-SE')
 
 function openPopup(kind: 'prompt' | 'meeting', payload: Record<string, string>) {
   if (popup) { popup.focus(); return }
   popup = new BrowserWindow({
-    width: 360, height: kind === 'meeting' ? 272 : 210,
+    width: 360, height: kind === 'meeting' ? 330 : 210,
     resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
     alwaysOnTop: true, skipTaskbar: true, title: 'WorkTracker',
     // Hintergrund themengerecht – sonst weiße Defaultfarbe (Dark Mode: weiß auf weiß).
@@ -98,21 +102,33 @@ function labelMeeting(startMs: number, endMs: number, title: string) {
   if (!title || title === 'Meeting') return
   const dateMs = startOfDay(startMs)
   const segs = deriveDay(dateMs, Date.now(), graceSeconds())
-  const updated = segs.map(s =>
-    (s.kind === 'work' && (s.meeting || s.ticket === 'Meeting' || !s.ticket) && s.start < endMs && s.end > startMs)
-      ? { ...s, ticket: title, meeting: true } : s)
-  saveSegments(dateMs, updated)
+  if (endMs <= startMs) return
+  const out: ReturnType<typeof deriveDay> = []
+  for (const s of segs) {
+    if (s.kind !== 'work' || s.end <= startMs || s.start >= endMs) { out.push(s); continue }
+    const a = Math.max(s.start, startMs), b = Math.min(s.end, endMs)
+    if (s.start < a) out.push({ ...s, id: randomUUID(), end: a })
+    out.push({ ...s, id: randomUUID(), start: a, end: b, ticket: title || 'Meeting', meeting: true }) // NUR der Call-Bereich
+    if (s.end > b) out.push({ ...s, id: randomUUID(), start: b })
+  }
+  saveSegments(dateMs, out.sort((x, y) => x.start - y.start))
   win?.webContents.send('tick')
 }
 
-/** Call NICHT als Meeting werten -> Markierung weg, wird zu normaler Arbeitszeit. */
+/** Call NICHT als Meeting werten -> nur der Call-Bereich wird zu normaler Arbeit. */
 function unlabelMeeting(startMs: number, endMs: number) {
+  if (endMs <= startMs) return
   const dateMs = startOfDay(startMs)
   const segs = deriveDay(dateMs, Date.now(), graceSeconds())
-  const updated = segs.map(s =>
-    (s.kind === 'work' && (s.meeting || s.ticket === 'Meeting') && s.start < endMs && s.end > startMs)
-      ? { ...s, ticket: null, meeting: false } : s)
-  saveSegments(dateMs, updated) // coalesce beim Lesen führt es mit der Nachbar-Arbeit zusammen
+  const out: ReturnType<typeof deriveDay> = []
+  for (const s of segs) {
+    if (s.kind !== 'work' || s.end <= startMs || s.start >= endMs) { out.push(s); continue }
+    const a = Math.max(s.start, startMs), b = Math.min(s.end, endMs)
+    if (s.start < a) out.push({ ...s, id: randomUUID(), end: a })
+    out.push({ ...s, id: randomUUID(), start: a, end: b, ticket: null, note: null, meeting: false })
+    if (s.end > b) out.push({ ...s, id: randomUUID(), start: b })
+  }
+  saveSegments(dateMs, out.sort((x, y) => x.start - y.start)) // coalesce beim Lesen führt zusammen
   win?.webContents.send('tick')
 }
 
@@ -327,14 +343,21 @@ function setupIpc() {
     return { count: r.count, error: r.error }
   })
 
-  ipcMain.handle('popup-result', (_e, kind: string, value: string) => {
+  ipcMain.handle('popup-result', (_e, kind: string, value: string, payload?: { from?: string; to?: string }) => {
     if (kind === 'prompt') {
       // Arbeit -> aktiv lassen; Pause/Privat -> gerade gestartetes Arbeiten verwerfen + Pause halten.
       if (value === 'pause' || value === 'privat') tracker.revertActivation()
       refreshTray()
     } else if (kind === 'meeting' && pendingMeeting) {
-      if (value === '__none__') unlabelMeeting(pendingMeeting.start, pendingMeeting.end)
-      else labelMeeting(pendingMeeting.start, pendingMeeting.end, value || 'Meeting')
+      let { start, end } = pendingMeeting
+      // ggf. im Popup korrigierte Zeiten verwenden (Teams-Erkennung ist nicht immer exakt).
+      if (payload?.from && payload?.to) {
+        const day = startOfDay(pendingMeeting.start)
+        const s = hhmmToMs(day, payload.from), e = hhmmToMs(day, payload.to)
+        if (s !== null && e !== null && e > s) { start = s; end = e }
+      }
+      if (value === '__none__') unlabelMeeting(start, end)
+      else labelMeeting(start, end, value || 'Meeting')
       pendingMeeting = null
     }
     popup?.close()
