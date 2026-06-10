@@ -72,6 +72,9 @@ sich manuell wie per API/KI nachpflegen.
   Figma-/Design-Arbeit ohne Git-Commits.
 - Routen: `GET /api/health` · `GET /api/projects` · `GET /api/day` · `POST /api/assign` ·
   `POST /api/day` · `POST /api/reset`.
+- **Claude-Skill** dazu: [**SkyTechNerds/WorkTracker-Claude**](https://github.com/SkyTechNerds/WorkTracker-Claude)
+  – lässt [Claude Code](https://claude.com/claude-code) Zeiten per Sprache über diese API erfassen
+  („trag 14–15:30 Figma für JUMO ein").
 
 ### Überstunden, Reports, Updates
 - **Überstunden-Konto** (Soll-Stunden/Tag, Arbeitstage, Startsaldo) mit Tagestabelle.
