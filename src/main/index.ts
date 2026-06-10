@@ -312,16 +312,16 @@ function refreshTray() {
   // Icon je Zustand: Arbeit = Aktentasche, Pause = Kaffeetasse, sonst Mond.
   const icon = ds === 'Arbeit' ? trayImages.work : ds === 'Pause' ? trayImages.pause : trayImages.off
   if (icon) tray.setImage(icon)
-  const statusLabel =
+  const statusBase =
     ds === 'Arbeit' ? '● Arbeitet'
       : ds === 'Pause' ? '◐ Pausiert'
         : ds === 'Feierabend' ? '○ Feierabend'
           : '○ Bereit'
+  const statusLabel = tracker.inCall ? `${statusBase} (Call)` : statusBase
   const menu = Menu.buildFromTemplate([
     { label: statusLabel, enabled: false },
     { label: `Gearbeitet: ${fmt(worked)}`, enabled: false },
     { label: `Pause: ${fmt(paused)}`, enabled: false },
-    ...(tracker.inCall ? [{ label: 'Im Call', enabled: false }] : []),
     { type: 'separator' },
     { label: 'Arbeiten', enabled: ds !== 'Arbeit', click: () => resumeDay() },
     { label: 'Pause', enabled: ds === 'Arbeit', click: () => { tracker.pauseWork(); refreshTray() } },
