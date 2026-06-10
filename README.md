@@ -72,9 +72,10 @@ sich manuell wie per API/KI nachpflegen.
   Figma-/Design-Arbeit ohne Git-Commits.
 - Routen: `GET /api/health` · `GET /api/projects` · `GET /api/day` · `POST /api/assign` ·
   `POST /api/day` · `POST /api/reset`.
-- **Claude-Skill** dazu: [**SkyTechNerds/WorkTracker-Claude**](https://github.com/SkyTechNerds/WorkTracker-Claude)
-  – lässt [Claude Code](https://claude.com/claude-code) Zeiten per Sprache über diese API erfassen
-  („trag 14–15:30 Figma für JUMO ein").
+- **MCP-Server** dazu: [**SkyTechNerds/worktracker-mcp**](https://github.com/SkyTechNerds/worktracker-mcp)
+  – stellt diese API als [MCP](https://modelcontextprotocol.io)-Tools bereit, sodass jeder
+  MCP-fähige Agent (Claude Code, ChatGPT Desktop, Cursor, Codex …) Zeiten per Sprache erfassen
+  kann („trag 14–15:30 Figma für JUMO ein").
 
 ### Überstunden, Reports, Updates
 - **Überstunden-Konto** (Soll-Stunden/Tag, Arbeitstage, Startsaldo) mit Tagestabelle.
