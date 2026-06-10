@@ -1,4 +1,4 @@
-// Tages-Report als Markdown oder CSV (portiert aus Swift Reporter).
+// Tages-Report (Markdown/CSV) + Monatsbericht (HTML/CSV) für Projektmanager.
 
 import { Segment, AppConfig, UNASSIGNED } from './types'
 import { segments, ticketTotals } from './day'
@@ -54,7 +54,16 @@ export function reportMarkdown(dateMs: number, nowMs: number, graceSeconds: numb
   return lines.join('\n')
 }
 
-// ---- Monatsbericht (für Projektmanager) ----
+// ================= Monatsbericht (Projektmanager-Auswertung) =================
+
+const PALETTE = ['#2563eb', '#f97316', '#16a34a', '#7c3aed', '#db2777', '#0891b2', '#ca8a04', '#9333ea', '#0d9488', '#64748b']
+// Kategorie-Farben (Tages-/Wochenbalken) – getrennt von Projektfarben.
+const CAT = { customer: '#2563eb', internal: '#7c3aed', meeting: '#db2777', pause: '#94a3b8', open: '#e2e8f0' }
+type Cat = 'customer' | 'internal' | 'meeting' | 'pause'
+
+const esc = (v: string) => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!))
+const dec = (sec: number) => (sec / 3600).toFixed(2)
+const pct = (part: number, total: number) => total > 0 ? `${Math.round(part / total * 100)}%` : '–'
 
 function isoWeek(date: Date): number {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
@@ -63,193 +72,271 @@ function isoWeek(date: Date): number {
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
 }
-const dec = (seconds: number) => (seconds / 3600).toFixed(2)
-const esc = (v: string) => String(v).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!))
-const pct = (part: number, total: number) => total > 0 ? `${Math.round(part / total * 100)} %` : '–'
 
-interface ProjAgg { name: string; seconds: number; tickets: Record<string, number>; color?: string }
-interface WeekAgg { week: number; label: string; seconds: number; projects: Record<string, number> }
-
-const PALETTE = ['#2f6df6', '#34c759', '#ff9500', '#af52de', '#ff2d55', '#5ac8fa', '#ffcc00', '#30b0c7', '#a2845e', '#8e8e93']
-
-// Donut-Diagramm (Inline-SVG) für die Projektverteilung.
-function svgDonut(data: { name: string; seconds: number; color: string }[], total: number): string {
-  const r = 70, cx = 90, cy = 90, sw = 26, C = 2 * Math.PI * r
-  let offset = 0
-  const arcs = data.map(d => {
-    const len = (total > 0 ? d.seconds / total : 0) * C
-    const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${d.color}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`
-    offset += len
-    return seg
-  }).join('')
-  return `<svg viewBox="0 0 180 180" width="180" height="180" role="img">${arcs}<text x="${cx}" y="${cy - 1}" text-anchor="middle" font-size="19" font-weight="700">${hm(total)}</text><text x="${cx}" y="${cy + 16}" text-anchor="middle" font-size="11" fill="#6e6e73">gesamt</text></svg>`
-}
-
-// Balkendiagramm (Inline-SVG) – Werte in Sekunden, Beschriftung in Stunden.
-function svgBars(data: { label: string; seconds: number }[], color: string): string {
-  const n = Math.max(1, data.length), bw = 30, gap = 22, padL = 8, padB = 26, padT = 16
-  const w = padL + n * (bw + gap), h = 180, max = Math.max(1, ...data.map(d => d.seconds))
-  const plot = h - padB - padT
-  const bars = data.map((d, i) => {
-    const bh = (d.seconds / max) * plot
-    const x = padL + i * (bw + gap), y = h - padB - bh
-    return `<rect x="${x}" y="${y.toFixed(1)}" width="${bw}" height="${Math.max(1, bh).toFixed(1)}" rx="4" fill="${color}"/>`
-      + `<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" text-anchor="middle" font-size="10" fill="#1d1d1f">${(d.seconds / 3600).toFixed(1)}</text>`
-      + `<text x="${(x + bw / 2).toFixed(1)}" y="${h - padB + 14}" text-anchor="middle" font-size="10" fill="#6e6e73">${esc(d.label)}</text>`
-  }).join('')
-  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img"><line x1="${padL}" y1="${h - padB}" x2="${w}" y2="${h - padB}" stroke="#e3e3e6"/>${bars}</svg>`
+interface DayData {
+  ms: number; weekend: boolean; future: boolean; planrelevant: boolean
+  cats: Record<Cat, number>; work: number; pause: number; fill: number; open: number
+  projects: Record<string, number>; items: { label: string; seconds: number }[]; hasBooking: boolean
 }
 
 export interface MonthReport { year: number; month: number; key: string; html: string; csv: string; totalSeconds: number; workDays: number }
 
-/** Monatsbericht: gruppiert nach Projekt/Ticket, Woche und Tag. month = 0..11. */
 export function buildMonthReport(year: number, month: number, nowMs: number, graceSeconds: number, config: AppConfig): MonthReport {
-  const first = new Date(year, month, 1)
-  const last = new Date(year, month + 1, 0)
-  const projects: Record<string, ProjAgg> = {}
-  const weeks: Record<number, WeekAgg> = {}
-  const dayRows: { ms: number; worked: number; brk: number; items: Record<string, number> }[] = []
-  let totalWorked = 0, totalBreak = 0, totalMeeting = 0, workDays = 0
-
-  for (const d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
-    const dayMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-    const segs = segments(dayMs, nowMs, graceSeconds)
-    if (!segs.length) continue
-    let dayWorked = 0, dayBreak = 0
-    const items: Record<string, number> = {}
-    const wk = isoWeek(new Date(dayMs))
-    for (const s of segs) {
-      const dur = Math.max(0, s.end - s.start) / 1000
-      if (s.kind === 'break') { dayBreak += dur; continue }
-      dayWorked += dur
-      // Kunde/Projekt hat Vorrang – Meetings MIT Projekt werden dem Kunden zugerechnet (abrechenbar).
-      const proj = s.project || (s.meeting ? 'Meetings' : 'Ohne Projekt')
-      const ticket = s.meeting ? (s.ticket || 'Meeting') : (s.ticket || UNASSIGNED)
-      if (s.meeting) totalMeeting += dur
-      const p = projects[proj] || (projects[proj] = { name: proj, seconds: 0, tickets: {} })
-      p.seconds += dur; p.tickets[ticket] = (p.tickets[ticket] || 0) + dur
-      const w = weeks[wk] || (weeks[wk] = { week: wk, label: `KW ${wk}`, seconds: 0, projects: {} })
-      w.seconds += dur; w.projects[proj] = (w.projects[proj] || 0) + dur
-      const itemKey = proj + (ticket !== UNASSIGNED && ticket !== proj ? ` / ${ticket}` : '')
-      items[itemKey] = (items[itemKey] || 0) + dur
-    }
-    totalWorked += dayWorked; totalBreak += dayBreak
-    if (dayWorked > 0) workDays++
-    dayRows.push({ ms: dayMs, worked: dayWorked, brk: dayBreak, items })
-  }
-
-  const monthLabel = first.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
-  const projList = Object.values(projects).sort((a, b) => b.seconds - a.seconds)
-  const weekList = Object.values(weeks).sort((a, b) => a.week - b.week)
-  const key = `${year}-${String(month + 1).padStart(2, '0')}`
-
-  // Farben je Projekt (Projektfarbe aus Config, sonst Palette/Sonderfälle).
-  const colorOf = (name: string, idx: number): string => {
-    const c = config.projects?.find(x => x.name === name)?.color
+  const TARGET = (config.targetHoursPerDay || 8) * 3600
+  const workdays = config.workdayWeekdays || [2, 3, 4, 5, 6] // 1=So..7=Sa
+  const isWorkday = (d: Date) => workdays.includes(d.getDay() + 1)
+  const internalSet = new Set((config.projects || []).filter(p => p.internal).map(p => p.name))
+  const projColor = (name: string, idx: number) => {
+    const c = config.projects?.find(p => p.name === name)?.color
     if (c) return c
-    if (name === 'Meetings') return '#af52de'
-    if (name === 'Ohne Projekt') return '#8e8e93'
+    if (name === 'Meetings') return CAT.meeting
+    if (name === 'Ohne Projekt' || name === 'Intern') return CAT.internal
     return PALETTE[idx % PALETTE.length]
   }
-  projList.forEach((p, i) => { p.color = colorOf(p.name, i) })
-  const donutData = projList.map(p => ({ name: p.name, seconds: p.seconds, color: p.color! }))
-  const weekBars = weekList.map(w => ({ label: `KW${w.week}`, seconds: w.seconds }))
-  const dayBars = dayRows.map(r => ({ label: `${new Date(r.ms).getDate()}.`, seconds: r.worked }))
 
-  // ---- HTML ----
-  const h: string[] = []
-  h.push(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Monatsbericht ${esc(monthLabel)}</title>`)
-  h.push(`<style>
-    :root{--ink:#1d1d1f;--mut:#6e6e73;--line:#e3e3e6;--accent:#2f6df6;--bg:#f5f5f7}
-    *{box-sizing:border-box} body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);margin:0;padding:32px;background:#fff}
-    h1{font-size:24px;margin:0 0 2px} h2{font-size:16px;margin:28px 0 10px;border-bottom:2px solid var(--accent);padding-bottom:4px}
-    .who{font-size:16px;font-weight:600;margin:0 0 2px}
-    .meta{color:var(--mut);margin-bottom:20px}
-    .cards{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 4px}
-    .card{background:var(--bg);border-radius:10px;padding:12px 16px;min-width:140px}
-    .card b{display:block;font-size:22px} .card span{color:var(--mut);font-size:12px}
-    table{border-collapse:collapse;width:100%;margin:6px 0 4px} th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
-    th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
-    td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-    tr.proj td{font-weight:600;background:var(--bg)} tr.tick td:first-child{padding-left:26px;color:var(--mut)}
-    td .dot{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:7px;vertical-align:middle}
-    .charts{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;margin:10px 0 4px}
-    .chart h3{font-size:13px;color:var(--mut);margin:0 0 8px;font-weight:600}
-    .legend{display:flex;flex-direction:column;gap:5px;margin-top:10px;font-size:12px}
-    .legend span{display:flex;align-items:center;gap:7px} .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
-    .scrollx{overflow-x:auto;max-width:100%;padding-bottom:4px}
-    .foot{color:var(--mut);font-size:12px;margin-top:28px}
-    @media print{body{padding:0} .scrollx{overflow:visible}}
-  </style></head><body>`)
-  const who = (config.employeeName || '').trim()
-  h.push(`<h1>Monatsbericht – ${esc(monthLabel)}</h1>`)
-  if (who) h.push(`<div class="who">${esc(who)}</div>`)
-  h.push(`<div class="meta">Erstellt am ${new Date(nowMs).toLocaleString('de-DE')} · WorkTracker</div>`)
-  h.push(`<div class="cards">
-    <div class="card"><b>${hm(totalWorked)}</b><span>Gesamt (${dec(totalWorked)} h)</span></div>
-    <div class="card"><b>${workDays}</b><span>Arbeitstage</span></div>
-    <div class="card"><b>${hm(workDays ? totalWorked / workDays : 0)}</b><span>Ø pro Arbeitstag</span></div>
-    <div class="card"><b>${hm(totalMeeting)}</b><span>davon Meetings</span></div>
-    <div class="card"><b>${hm(totalBreak)}</b><span>Pausen</span></div>
-  </div>`)
+  const first = new Date(year, month, 1)
+  const last = new Date(year, month + 1, 0)
+  const todayStart = new Date(nowMs); todayStart.setHours(0, 0, 0, 0)
+  const cutoff = Math.min(last.getTime(), todayStart.getTime())
 
-  h.push(`<h2>Übersicht</h2><div class="charts">
-    <div class="chart"><h3>Projektverteilung</h3>${svgDonut(donutData, totalWorked)}
-      <div class="legend">${projList.map(p => `<span><i style="background:${p.color}"></i>${esc(p.name)} · ${hm(p.seconds)} (${pct(p.seconds, totalWorked)})</span>`).join('')}</div></div>
-    <div class="chart"><h3>Stunden je Woche</h3><div class="scrollx">${svgBars(weekBars, '#2f6df6')}</div></div>
-  </div>`)
-  h.push(`<div class="chart" style="margin-top:14px"><h3>Stunden je Tag</h3><div class="scrollx">${svgBars(dayBars, '#34c759')}</div></div>`)
+  const days: DayData[] = []
+  const projAgg: Record<string, { name: string; seconds: number; tickets: Record<string, number>; color: string }> = {}
+  let totalWork = 0, totalPause = 0, totalMeeting = 0, totalInternal = 0, totalCustomer = 0
+  let bookedDays = 0, totalOpen = 0, emptyWorkdays = 0, fullDays = 0, underDays = 0, weekdaysInMonth = 0
 
-  h.push(`<h2>Aufwand je Projekt &amp; Ticket</h2><table><thead><tr><th>Projekt / Ticket</th><th class="num">Stunden</th><th class="num">Dezimal</th><th class="num">Anteil</th></tr></thead><tbody>`)
-  for (const p of projList) {
-    h.push(`<tr class="proj"><td><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</td><td class="num">${hm(p.seconds)}</td><td class="num">${dec(p.seconds)}</td><td class="num">${pct(p.seconds, totalWorked)}</td></tr>`)
-    for (const [tk, sec] of Object.entries(p.tickets).sort((a, b) => b[1] - a[1])) {
-      h.push(`<tr class="tick"><td>${esc(tk)}</td><td class="num">${hm(sec)}</td><td class="num">${dec(sec)}</td><td class="num"></td></tr>`)
+  for (const dd = new Date(first); dd <= last; dd.setDate(dd.getDate() + 1)) {
+    const ms = new Date(dd.getFullYear(), dd.getMonth(), dd.getDate()).getTime()
+    const d = new Date(ms)
+    const weekend = !isWorkday(d)
+    if (!weekend) weekdaysInMonth++
+    const future = ms > cutoff
+    const segs = future ? [] : segments(ms, nowMs, graceSeconds)
+    const cats: Record<Cat, number> = { customer: 0, internal: 0, meeting: 0, pause: 0 }
+    const projects: Record<string, number> = {}
+    const itemsMap: Record<string, number> = {}
+    for (const s of segs) {
+      const sec = Math.max(0, s.end - s.start) / 1000
+      if (s.kind === 'break') { cats.pause += sec; continue }
+      const cat: Cat = s.meeting ? 'meeting' : (s.project && !internalSet.has(s.project)) ? 'customer' : 'internal'
+      cats[cat] += sec
+      const proj = s.project || (s.meeting ? 'Meetings' : 'Ohne Projekt')
+      projects[proj] = (projects[proj] || 0) + sec
+      const pa = projAgg[proj] || (projAgg[proj] = { name: proj, seconds: 0, tickets: {}, color: '' })
+      pa.seconds += sec
+      const tk = s.meeting ? (s.ticket || 'Meeting') : (s.ticket || UNASSIGNED)
+      pa.tickets[tk] = (pa.tickets[tk] || 0) + sec
+      const ik = proj + (tk && tk !== UNASSIGNED && tk !== proj ? ` / ${tk}` : '')
+      itemsMap[ik] = (itemsMap[ik] || 0) + sec
     }
+    const work = cats.customer + cats.internal + cats.meeting
+    const pause = cats.pause
+    const fill = work + pause
+    const hasBooking = fill > 0
+    const open = (!weekend && !future && hasBooking) ? Math.max(0, TARGET - fill) : 0
+    totalWork += work; totalPause += pause; totalMeeting += cats.meeting; totalInternal += cats.internal; totalCustomer += cats.customer
+    if (hasBooking) { bookedDays++; totalOpen += open; if (fill >= TARGET) fullDays++; else underDays++ }
+    else if (!weekend && !future) emptyWorkdays++
+    const items = Object.entries(itemsMap).map(([label, seconds]) => ({ label, seconds })).sort((a, b) => b.seconds - a.seconds)
+    days.push({ ms, weekend, future, planrelevant: !weekend && !future, cats, work, pause, fill, open, projects, items, hasBooking })
   }
-  h.push(`</tbody></table>`)
 
-  h.push(`<h2>Aufwand je Woche</h2><table><thead><tr><th>Woche</th><th>Projekte</th><th class="num">Stunden</th><th class="num">Dezimal</th></tr></thead><tbody>`)
-  for (const w of weekList) {
-    const projs = Object.entries(w.projects).sort((a, b) => b[1] - a[1]).map(([n, s]) => `${esc(n)} (${hm(s)})`).join(', ')
-    h.push(`<tr><td>${esc(w.label)}</td><td>${projs}</td><td class="num">${hm(w.seconds)}</td><td class="num">${dec(w.seconds)}</td></tr>`)
-  }
-  h.push(`</tbody></table>`)
+  const projList = Object.values(projAgg).sort((a, b) => b.seconds - a.seconds)
+  projList.forEach((p, i) => { p.color = projColor(p.name, i) })
 
-  h.push(`<h2>Aufwand je Tag</h2><table><thead><tr><th>Datum</th><th>Projekte / Tickets</th><th class="num">Gearbeitet</th><th class="num">Pause</th></tr></thead><tbody>`)
-  for (const r of dayRows) {
-    const dl = new Date(r.ms).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })
-    const its = Object.entries(r.items).sort((a, b) => b[1] - a[1]).map(([n, s]) => `${esc(n)} (${hm(s)})`).join(', ')
-    h.push(`<tr><td>${dl}</td><td>${its}</td><td class="num">${hm(r.worked)}</td><td class="num">${r.brk > 0 ? hm(r.brk) : '–'}</td></tr>`)
+  // Wochen
+  interface WeekAgg { week: number; first: number; last: number; cats: Record<Cat, number>; soll: number; booking: number }
+  const weeks: Record<number, WeekAgg> = {}
+  for (const day of days) {
+    const wk = isoWeek(new Date(day.ms))
+    const w = weeks[wk] || (weeks[wk] = { week: wk, first: day.ms, last: day.ms, cats: { customer: 0, internal: 0, meeting: 0, pause: 0 }, soll: 0, booking: 0 })
+    ;(['customer', 'internal', 'meeting', 'pause'] as Cat[]).forEach(k => { w.cats[k] += day.cats[k] })
+    if (day.planrelevant) w.soll += TARGET
+    w.booking += day.fill
+    w.first = Math.min(w.first, day.ms); w.last = Math.max(w.last, day.ms)
   }
-  h.push(`</tbody></table>`)
-  h.push(`<div class="foot">Zeiten sind Ist-Aufwände (ungerundet). Meetings sind als eigenes „Projekt" geführt.</div>`)
-  h.push(`</body></html>`)
+  const weekList = Object.values(weeks).sort((a, b) => a.week - b.week)
+
+  const monthLabel = first.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+  const key = `${year}-${String(month + 1).padStart(2, '0')}`
+  const who = (config.employeeName || '').trim()
+  const top = projList[0]
+  const status = emptyWorkdays > 0 ? 'Prüfen' : 'Vollständig'
+
+  // ---- Auffälligkeiten (regelbasiert) ----
+  const insights: { t: string; p: string }[] = []
+  const isCurrentMonth = year === todayStart.getFullYear() && month === todayStart.getMonth()
+  if (isCurrentMonth) insights.push({ t: `Laufender Monat – Stand ${new Date(cutoff).toLocaleDateString('de-DE')}`, p: 'Tage nach dem Stichtag werden nicht als fehlend gewertet.' })
+  if (emptyWorkdays > 0) insights.push({ t: `${emptyWorkdays} planrelevante Tag(e) ohne Buchung`, p: 'Im Kalender als „keine Buchung" sichtbar – ggf. Urlaub/Krank oder fehlende Erfassung.' })
+  const emptyWeeks = weekList.filter(w => w.booking === 0)
+  if (emptyWeeks.length) insights.push({ t: `KW ${emptyWeeks.map(w => w.week).join(', ')} ohne Buchungen`, p: 'Ganze Woche(n) ohne erfasste Zeit.' })
+  if (underDays > 0) insights.push({ t: `${underDays} Tag(e) unter ${hm(TARGET)} Soll`, p: 'Differenz bis zur 8h-Tagesreferenz = nicht gebuchte Sollzeit.' })
+  if (totalWork > 0) insights.push({ t: `Meeting-Anteil ${pct(totalMeeting, totalWork)}`, p: `${hm(totalMeeting)} von ${hm(totalWork)} gebuchter Arbeit entfallen auf Meetings.` })
+  if (top) insights.push({ t: `Top-Projekt ${esc(top.name)} = ${pct(top.seconds, totalWork)}`, p: `${hm(top.seconds)} – größter Anteil des Monats.` })
+
+  // ---- Helfer: gestapelter Tagesbalken ----
+  const stack = (cats: Record<Cat, number>, open: number, denomBase: number) => {
+    const fill = cats.customer + cats.internal + cats.meeting + cats.pause
+    const denom = Math.max(denomBase, fill)
+    const seg = (cls: string, sec: number, label: string) => sec > 0 ? `<span class="seg ${cls}" style="width:${(sec / denom * 100).toFixed(3)}%" title="${label}: ${hm(sec)}"></span>` : ''
+    return seg('work', cats.customer, 'Kundenprojekt') + seg('intern', cats.internal, 'Intern') + seg('meetings', cats.meeting, 'Meeting')
+      + seg('pause', cats.pause, 'Pause') + (open > 0 ? `<span class="seg open" style="width:${(open / denom * 100).toFixed(3)}%" title="Nicht gebuchte Sollzeit: ${hm(open)}"></span>` : '')
+  }
+
+  // ---- Kalenderzellen ----
+  const lead = (first.getDay() + 6) % 7 // Mo-basierter Offset des 1.
+  const cells: string[] = []
+  for (let i = 0; i < lead; i++) cells.push(`<article class="day outside"></article>`)
+  for (const day of days) {
+    const d = new Date(day.ms)
+    const dnum = d.getDate(); const dow = d.toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', '')
+    const head = `<div class="day-head"><strong>${dnum}</strong><span>${dow}</span></div>`
+    if (day.weekend) { cells.push(`<article class="day weekend">${head}<div class="stack"><span class="seg weekendseg" style="width:100%"></span></div><div class="day-total muted">Wochenende</div></article>`); continue }
+    if (day.future) { cells.push(`<article class="day future">${head}<div class="stack"></div><div class="day-total muted">–</div></article>`); continue }
+    if (!day.hasBooking) { cells.push(`<article class="day empty-workday">${head}<div class="stack"><span class="seg noentry" style="width:100%"></span></div><div class="day-total muted">keine Buchung</div></article>`); continue }
+    const over = day.fill > TARGET ? day.fill - TARGET : 0
+    const pills = Object.entries(day.projects).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, s]) => `<span>${esc(n)} ${hm(s)}</span>`).join('')
+    const totalLbl = `${hm(day.fill > TARGET ? TARGET : day.fill)} / ${hm(TARGET)}${over > 0 ? ` <em class="over">+${hm(over)}</em>` : ''}`
+    cells.push(`<article class="day booked">${head}<div class="stack">${stack(day.cats, day.open, TARGET)}</div><div class="day-total">${totalLbl}</div><div class="day-pills">${pills}</div></article>`)
+  }
+  while (cells.length % 7 !== 0) cells.push(`<article class="day outside"></article>`)
+
+  // ---- Wochen-Tabelle ----
+  const weekRows = weekList.map(w => {
+    const fill = w.cats.customer + w.cats.internal + w.cats.meeting + w.cats.pause
+    const work = w.cats.customer + w.cats.internal + w.cats.meeting
+    const open = Math.max(0, w.soll - fill)
+    const range = `${new Date(w.first).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}–${new Date(w.last).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`
+    const denom = Math.max(w.soll, fill, 1)
+    const seg = (cls: string, sec: number) => sec > 0 ? `<span class="seg ${cls}" style="width:${(sec / denom * 100).toFixed(2)}%"></span>` : ''
+    const mini = w.booking === 0 ? '' : seg('work', w.cats.customer) + seg('intern', w.cats.internal) + seg('meetings', w.cats.meeting) + seg('pause', w.cats.pause) + (open > 0 ? `<span class="seg open" style="width:${(open / denom * 100).toFixed(2)}%"></span>` : '')
+    const badge = w.booking === 0 ? `<span class="badge keinebuchung">keine Buchung</span>` : open > 0 ? `<span class="badge offen">Rest ${hm(open)}</span>` : `<span class="badge voll">vollständig</span>`
+    return `<tr><td><strong>KW ${w.week}</strong><small>${range}</small></td><td><div class="mini-stack">${mini}</div></td><td class="num">${hm(work)}</td><td class="num">${hm(w.cats.pause)}</td><td class="num">${hm(w.soll)}</td><td>${badge}</td></tr>`
+  }).join('')
+
+  // ---- Projektkarten ----
+  const projCards = projList.map(p => {
+    const tickets = Object.entries(p.tickets).sort((a, b) => b[1] - a[1]).map(([t, s]) => `<li><span>${esc(t)}</span><b>${hm(s)}</b></li>`).join('')
+    return `<article class="project-card"><div class="project-main"><div><span class="dot" style="background:${p.color}"></span><strong>${esc(p.name)}</strong></div><b>${hm(p.seconds)}</b><em>${pct(p.seconds, totalWork)}</em></div><div class="project-bar"><span style="width:${(totalWork > 0 ? p.seconds / totalWork * 100 : 0).toFixed(2)}%;background:${p.color}"></span></div><ul>${tickets}</ul></article>`
+  }).join('')
+  const projLegend = projList.map(p => `<span><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</span>`).join('')
+
+  // ---- Tagesdetail-Tabelle ----
+  const detailRows = days.filter(d => !d.future).map(d => {
+    const dt = new Date(d.ms)
+    const dname = dt.toLocaleDateString('de-DE', { weekday: 'long' }); const ddate = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    if (d.weekend) return `<tr><td><strong>${dname}</strong><small>${ddate}</small></td><td>Wochenende</td><td class="num">–</td><td class="num">–</td><td><span class="badge frei">frei</span></td></tr>`
+    if (!d.hasBooking) return `<tr><td><strong>${dname}</strong><small>${ddate}</small></td><td class="muted">keine Buchung</td><td class="num">–</td><td class="num">–</td><td><span class="badge offen">keine Buchung</span></td></tr>`
+    const items = d.items.map(it => `${esc(it.label)} ${hm(it.seconds)}`).join(', ')
+    const badge = d.fill >= TARGET ? `<span class="badge voll">vollständig</span>` : `<span class="badge unter8h">unter ${hm(TARGET)}</span>`
+    return `<tr><td><strong>${dname}</strong><small>${ddate}</small></td><td>${items}</td><td class="num">${hm(d.work)}</td><td class="num">${d.pause > 0 ? hm(d.pause) : '–'}</td><td>${badge}</td></tr>`
+  }).join('')
+
+  const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Monatsbericht ${esc(monthLabel)}${who ? ' – ' + esc(who) : ''}</title>
+<style>
+:root{--bg:#f4f6f8;--paper:#fff;--ink:#172033;--muted:#667085;--line:#dce3eb;--work:${CAT.customer};--intern:${CAT.internal};--meetings:${CAT.meeting};--pause:${CAT.pause};--open:${CAT.open};--weekend:#f8fafc;--ok:#dcfce7;--warn:#fff7ed}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+.page{max-width:1360px;margin:0 auto;padding:28px}
+.hero{background:linear-gradient(135deg,#101828,#243b67);color:#fff;border-radius:28px;padding:26px 28px;display:grid;grid-template-columns:1.2fr auto;gap:24px;box-shadow:0 18px 60px rgba(16,24,40,.18)}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#bcc7da;font-weight:700;margin-bottom:8px}
+h1{margin:0;font-size:34px;line-height:1.08;letter-spacing:-.04em}.hero p{margin:8px 0 0;color:#d7deea;max-width:640px}
+.report-meta{display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:10px;align-self:start}
+.meta-card{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:12px 14px}
+.meta-card span{display:block;color:#c9d3e4;font-size:12px}.meta-card b{display:block;font-size:18px;margin-top:2px}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:16px}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:16px;box-shadow:0 10px 30px rgba(16,24,40,.05)}
+.kpi span{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}.kpi b{display:block;margin-top:8px;font-size:24px;letter-spacing:-.03em}.kpi small{display:block;margin-top:4px;color:var(--muted)}
+.section{margin-top:18px;background:var(--paper);border:1px solid var(--line);border-radius:26px;padding:20px;box-shadow:0 10px 30px rgba(16,24,40,.05)}
+.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+h2{margin:0;font-size:22px;letter-spacing:-.03em}.section-head p{margin:4px 0 0;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;font-size:12px;color:#344054}
+.legend span{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.swatch,.dot,.legend i{width:10px;height:10px;border-radius:999px;display:inline-block;vertical-align:middle}
+.swatch.work{background:var(--work)}.swatch.intern{background:var(--intern)}.swatch.meetings{background:var(--meetings)}.swatch.pause{background:var(--pause)}.swatch.open{background:var(--open);border:1px solid #cbd5e1}.swatch.weekend{background:#f1f5f9;border:1px dashed #cbd5e1}
+.grid-2{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:18px}
+.calendar-scroll{overflow:auto}.calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;min-width:760px}
+.weekday{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:0 8px 2px}
+.day{min-height:120px;border:1px solid var(--line);background:#fff;border-radius:16px;padding:10px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.day.outside{visibility:hidden}.day.weekend{background:var(--weekend);color:#94a3b8}.day.empty-workday{border-style:dashed}.day.future{opacity:.45}
+.day-head{display:flex;justify-content:space-between;align-items:center}.day-head strong{font-size:18px;letter-spacing:-.03em}.day-head span{font-size:12px;color:var(--muted);font-weight:700}
+.stack,.mini-stack{height:12px;background:#eef2f7;border-radius:999px;overflow:hidden;display:flex;border:1px solid rgba(0,0,0,.04)}
+.mini-stack{height:14px;min-width:200px}
+.seg{display:block;height:100%;flex:0 0 auto}.seg.work{background:var(--work)}.seg.intern{background:var(--intern)}.seg.meetings{background:var(--meetings)}.seg.pause{background:var(--pause)}.seg.open{background:var(--open)}.seg.weekendseg{background:#f1f5f9}.seg.noentry{background:repeating-linear-gradient(45deg,#f8fafc 0,#f8fafc 5px,#edf2f7 5px,#edf2f7 10px)}
+.day-total{font-weight:800;font-size:13px}.day-total .over{color:#ea580c;font-style:normal;font-weight:700}.muted{color:#94a3b8;font-weight:600}
+.day-pills{display:flex;flex-wrap:wrap;gap:4px;margin-top:auto}.day-pills span{font-size:10.5px;color:#475467;background:#f2f4f7;border-radius:999px;padding:2px 6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aside{display:flex;flex-direction:column;gap:12px}.note{border:1px solid var(--line);background:#f8fafc;border-radius:18px;padding:14px}.note h3{margin:0 0 8px;font-size:14px}.note p{margin:0;color:var(--muted)}
+.util{display:grid;grid-template-columns:1fr 1fr;gap:10px}.util div{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px}.util span{display:block;color:var(--muted);font-size:12px}.util b{display:block;font-size:20px;margin-top:3px}
+.projects{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.project-card{border:1px solid var(--line);border-radius:20px;padding:14px;background:#fff}
+.project-main{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center}.project-main strong{font-size:15px}.project-main b{font-size:16px}.project-main em{font-style:normal;color:var(--muted);font-size:12px}
+.project-bar{height:10px;background:#eef2f7;border-radius:99px;overflow:hidden;margin:12px 0}.project-bar span{display:block;height:100%;border-radius:99px}
+ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}li{display:flex;justify-content:space-between;gap:10px;color:#475467;font-size:12px}li b{color:#344054}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:18px}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;background:#f8fafc}tr:last-child td{border-bottom:0}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}td small{display:block;color:var(--muted);margin-top:2px}
+.badge{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;background:#f2f4f7;color:#475467}.badge.voll{background:var(--ok);color:#166534}.badge.offen,.badge.unter8h{background:var(--warn);color:#9a3412}.badge.frei{background:#f1f5f9;color:#64748b}.badge.keinebuchung{background:#fee2e2;color:#991b1b}
+.insights{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}.insight{border:1px solid var(--line);border-radius:18px;padding:14px;background:#fff}.insight b{display:block;margin-bottom:5px}.insight p{margin:0;color:var(--muted)}
+.footer{color:var(--muted);font-size:12px;text-align:center;margin:20px 0}
+@media(max-width:1120px){.hero,.grid-2{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,1fr)}}
+@media print{body{background:#fff}.page{max-width:none;padding:0}.hero,.section,.kpi{box-shadow:none}.calendar{min-width:0}}
+</style></head><body><div class="page">
+<header class="hero">
+  <div><div class="eyebrow">WorkTracker · Monatsauswertung · ${esc(status)}</div><h1>Monatsbericht ${esc(monthLabel)}</h1><p>Übersicht für Projektmanager: Auslastung, Tageslogik (8h-Referenz), Projektanteile, Tickets und nicht gebuchte Sollzeit in einer kompakten Report-Seite.</p></div>
+  <div class="report-meta"><div class="meta-card"><span>Mitarbeiter</span><b>${who ? esc(who) : '–'}</b></div><div class="meta-card"><span>Stand</span><b>${new Date(nowMs).toLocaleDateString('de-DE')}</b></div><div class="meta-card"><span>Monatstage</span><b>${last.getDate()} Tage</b></div><div class="meta-card"><span>Arbeitstage (Mo–Fr)</span><b>${weekdaysInMonth} Tage</b></div></div>
+</header>
+<section class="kpis">
+  <div class="kpi"><span>Gebuchte Arbeit</span><b>${hm(totalWork)}</b><small>ohne Pausen (${dec(totalWork)} h)</small></div>
+  <div class="kpi"><span>Gebuchte Tage</span><b>${bookedDays}</b><small>mit Aufwandseinträgen</small></div>
+  <div class="kpi"><span>Ø Arbeit / Tag</span><b>${hm(bookedDays ? totalWork / bookedDays : 0)}</b><small>bei gebuchten Tagen</small></div>
+  <div class="kpi"><span>Meetings</span><b>${hm(totalMeeting)}</b><small>${pct(totalMeeting, totalWork)} der Arbeit</small></div>
+  <div class="kpi"><span>Pausen</span><b>${hm(totalPause)}</b><small>nicht abrechenbar</small></div>
+  <div class="kpi"><span>Nicht gebuchte Sollzeit</span><b>${hm(totalOpen)}</b><small>Rest bis ${hm(TARGET)} an gebuchten Tagen</small></div>
+</section>
+<section class="section">
+  <div class="section-head"><div><h2>Arbeitsverlauf nach Kalenderlogik</h2><p>Alle Monatstage sichtbar. Jeder gebuchte Arbeitstag nutzt ${hm(TARGET)} als Referenz: Kunde + Intern + Meeting + Pause + ggf. nicht gebuchte Sollzeit.</p></div>
+  <div class="legend"><span><i class="swatch work"></i>Kundenprojekt</span><span><i class="swatch intern"></i>Intern</span><span><i class="swatch meetings"></i>Meeting</span><span><i class="swatch pause"></i>Pause</span><span><i class="swatch open"></i>nicht gebuchte Sollzeit</span><span><i class="swatch weekend"></i>Wochenende / keine Buchung</span></div></div>
+  <div class="grid-2">
+    <div class="calendar-scroll"><div class="calendar"><div class="weekday">Mo</div><div class="weekday">Di</div><div class="weekday">Mi</div><div class="weekday">Do</div><div class="weekday">Fr</div><div class="weekday">Sa</div><div class="weekday">So</div>${cells.join('')}</div></div>
+    <aside class="aside">
+      <div class="note"><h3>Leselogik</h3><p>Die Balken sind keine absoluten Balkendiagramme, sondern Tagesfüllstände auf ${hm(TARGET)}. So bleibt erkennbar, ob ein Tag vollständig erklärt ist.</p></div>
+      <div class="util"><div><span>Voll erklärt</span><b>${fullDays} Tage</b></div><div><span>Unter ${hm(TARGET)}</span><b>${underDays} Tage</b></div><div><span>Meetinganteil</span><b>${hm(totalMeeting)}</b></div><div><span>Top-Projekt</span><b>${top ? esc(top.name) : '–'}</b></div></div>
+      ${insights[0] ? `<div class="note"><h3>PM-Hinweis</h3><p><b>${esc(insights[0].t)}.</b> ${esc(insights[0].p)}</p></div>` : ''}
+    </aside>
+  </div>
+</section>
+<section class="section"><div class="section-head"><div><h2>Wochenvergleich</h2><p>Wöchentliche Verdichtung mit derselben Farblogik wie der Kalender. Wochen-Soll nur für Tage im Reportmonat.</p></div></div>
+  <div class="table-wrap"><table><thead><tr><th>Woche</th><th>Füllstand</th><th class="num">Arbeit</th><th class="num">Pause</th><th class="num">Soll</th><th>Status</th></tr></thead><tbody>${weekRows}</tbody></table></div></section>
+<section class="section"><div class="section-head"><div><h2>Projekt- und Ticketanteile</h2><p>Verteilung nach Kunde/Projekt – inkl. Meetings, die einem Kunden zugeordnet sind (abrechenbar).</p></div><div class="legend">${projLegend}</div></div>
+  <div class="projects">${projCards}</div></section>
+<section class="section"><div class="section-head"><div><h2>Auffälligkeiten für PM-Review</h2><p>Keine Bewertung, sondern schnelle Prüfpunkte für Statusgespräch oder Rechnungsvorbereitung.</p></div></div>
+  <div class="insights">${insights.map(i => `<article class="insight"><b>${esc(i.t)}</b><p>${esc(i.p)}</p></article>`).join('')}</div></section>
+<section class="section"><div class="section-head"><div><h2>Tagesdetails</h2><p>Exakte Prüfung einzelner Tage – Arbeit ohne Pause, Pause separat.</p></div></div>
+  <div class="table-wrap"><table><thead><tr><th>Tag</th><th>Projekte / Tickets</th><th class="num">Arbeit</th><th class="num">Pause</th><th>Status</th></tr></thead><tbody>${detailRows}</tbody></table></div></section>
+<div class="footer">WorkTracker · Monatsbericht ${esc(monthLabel)}${who ? ' · ' + esc(who) : ''} · Ist-Aufwände, ${hm(TARGET)}-Tagesreferenz</div>
+</div></body></html>`
 
   // ---- CSV (eine Zeile je Tag × Projekt/Ticket) ----
-  const c: string[] = ['Datum;Woche;Projekt;Ticket;Stunden;Dezimal']
   const cesc = (v: string) => /[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
-  for (const r of dayRows) {
-    const day = new Date(r.ms).toLocaleDateString('sv-SE')
-    const wk = isoWeek(new Date(r.ms))
-    for (const [item, sec] of Object.entries(r.items)) {
-      const [proj, ticket] = item.includes(' / ') ? item.split(' / ') : [item, '']
-      c.push([day, `KW ${wk}`, proj, ticket, hm(sec), dec(sec)].map(cesc).join(';'))
+  const c: string[] = ['Datum;Woche;Kategorie;Projekt;Ticket;Stunden;Dezimal']
+  for (const day of days) {
+    if (!day.hasBooking) continue
+    const date = new Date(day.ms).toLocaleDateString('sv-SE'); const wk = `KW ${isoWeek(new Date(day.ms))}`
+    for (const it of day.items) {
+      const [proj, ticket] = it.label.includes(' / ') ? it.label.split(' / ') : [it.label, '']
+      const catName = proj === 'Meetings' ? 'Meeting' : internalSet.has(proj) || proj === 'Ohne Projekt' ? 'Intern' : 'Kunde'
+      c.push([date, wk, catName, proj, ticket, hm(it.seconds), dec(it.seconds)].map(cesc).join(';'))
     }
   }
 
-  return { year, month, key, html: h.join('\n'), csv: c.join('\n'), totalSeconds: totalWorked, workDays }
+  return { year, month, key, html, csv: c.join('\n'), totalSeconds: totalWork, workDays: bookedDays }
 }
 
 export function reportCsv(dateMs: number, nowMs: number, graceSeconds: number): string {
   const segs = segments(dateMs, nowMs, graceSeconds)
-  const esc = (v: string) => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
+  const esc2 = (v: string) => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
   const rows: string[] = ['Datum,Von,Bis,Art,Ticket,Notiz,Minuten']
   const day = new Date(dateMs).toLocaleDateString('sv-SE')
   for (const s of segs) {
     const art = s.kind === 'work' ? 'Arbeit' : 'Pause'
     const mins = Math.round((s.end - s.start) / 60000)
-    rows.push([day, clock(s.start), clock(s.end), art, s.kind === 'work' ? (s.ticket || UNASSIGNED) : '', s.note || '', String(mins)].map(esc).join(','))
+    rows.push([day, clock(s.start), clock(s.end), art, s.kind === 'work' ? (s.ticket || UNASSIGNED) : '', s.note || '', String(mins)].map(esc2).join(','))
   }
   return rows.join('\n')
 }

@@ -44,7 +44,7 @@ const HOUR_H = 80
 
 interface Seg { id: string; start: number; end: number; kind: 'work' | 'break'; ticket?: string | null; note?: string | null; project?: string | null; meeting?: boolean; source: string }
 interface Summary { date: number; start?: number; end?: number; workedSeconds: number; breakSeconds: number; segments: Seg[]; materialized: boolean }
-interface Project { id: string; name: string; repoPath: string; gitUserEmail: string; color: string }
+interface Project { id: string; name: string; repoPath: string; gitUserEmail: string; color: string; internal?: boolean }
 
 const PROJECT_COLORS = ['#34c759', '#ff9500', '#ff2d55', '#5ac8fa', '#af52de', '#ffcc00', '#00c7be', '#ff3b30', '#a2845e', '#30b0c7']
 
@@ -1072,6 +1072,7 @@ function ProjectRow({ p, onChange, onDelete }: { p: Project; onChange: (patch: P
       <div className="prow">
         <input type="color" className="pcolor" title="Projektfarbe" value={p.color || '#34c759'} onChange={e => onChange({ color: e.target.value })} />
         <input className="pname" placeholder="Projektname" value={p.name} onChange={e => onChange({ name: e.target.value })} />
+        <label className="pintern" title="Interne, nicht abrechenbare Arbeit (eigene Kategorie im Monatsbericht)"><input type="checkbox" checked={!!p.internal} onChange={e => onChange({ internal: e.target.checked })} /> intern</label>
       </div>
       <div className="prow">
         <input className="ppath" placeholder="Repo-Pfad" value={p.repoPath} onChange={e => onChange({ repoPath: e.target.value })} />

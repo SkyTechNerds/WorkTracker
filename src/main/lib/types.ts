@@ -166,6 +166,7 @@ export interface Project {
   repoPath: string
   gitUserEmail: string
   color: string // Hex, z. B. "#34c759"
+  internal?: boolean // interne (nicht abrechenbare) Arbeit – eigene Kategorie im Bericht
 }
 
 /** Farbpalette für neue Projekte (macOS-Systemfarben). */
