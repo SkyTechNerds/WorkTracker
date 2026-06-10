@@ -2,9 +2,11 @@
 
 import { AppConfig } from './types'
 import { summary } from './day'
-import { earliestDay } from './store'
+import { earliestDay, isDayEnded } from './store'
 
-export interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean }
+export interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean; pending?: boolean }
+// balanceHours = stabiler Saldo (nur abgeschlossene/vergangene Tage). Der laufende
+// Tag wird erst zum Feierabend (oder beim Tageswechsel) eingerechnet -> kein -8h am Morgen.
 export interface OvertimeResult { balanceHours: number; days: OvertimeDay[] }
 
 function isWorkday(d: Date, weekdays: number[]): boolean {
@@ -31,6 +33,7 @@ export function computeOvertime(config: AppConfig, nowMs: number, graceSeconds: 
 
   const start = new Date(first); start.setHours(0, 0, 0, 0)
   const today = new Date(nowMs); today.setHours(0, 0, 0, 0)
+  const todayMs = today.getTime()
   for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
     const dateMs = d.getTime()
     const s = summary(dateMs, nowMs, graceSeconds)
@@ -38,11 +41,14 @@ export function computeOvertime(config: AppConfig, nowMs: number, graceSeconds: 
     const wd = isWorkday(d, config.workdayWeekdays)
     const target = wd ? config.targetHoursPerDay : 0
     const delta = workedHours - target
-    // Tage ganz ohne Arbeit an Arbeitstagen (z. B. Urlaub) nicht als Minus werten,
-    // wenn gar keine Events existieren -> nur zählen, wenn etwas getrackt wurde.
-    if (workedHours <= 0 && wd) continue
-    balance += delta
-    days.push({ date: dateMs, workedHours, targetHours: target, deltaHours: delta, isWorkday: wd })
+    // Laufender Tag (heute, noch kein Feierabend): NICHT in den Saldo einrechnen,
+    // sondern nur als „läuft" anzeigen -> kein -8h am Morgen.
+    const pending = dateMs === todayMs && !isDayEnded(dateMs)
+    // Tage ganz ohne Arbeit an Arbeitstagen (z. B. Urlaub) nicht als Minus werten.
+    // Der laufende Tag wird trotzdem gezeigt (als Fortschritt), aber nie negativ gewertet.
+    if (workedHours <= 0 && wd && !pending) continue
+    if (!pending) balance += delta
+    days.push({ date: dateMs, workedHours, targetHours: target, deltaHours: delta, isWorkday: wd, pending })
   }
   return { balanceHours: balance, days }
 }

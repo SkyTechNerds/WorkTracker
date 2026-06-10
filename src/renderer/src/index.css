@@ -195,13 +195,19 @@ button, input, select, textarea { font-family: inherit; }
 .rg-add button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* Überstunden */
-.ot-balance { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; color: var(--muted); }
+.ot-balance { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; color: var(--muted); }
 .ot-balance b { font-size: 30px; font-variant-numeric: tabular-nums; }
+.ot-balance small { font-weight: 400; font-size: 12px; opacity: 0.8; }
+.ot-today { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 9px 13px; background: var(--hover); border-radius: 8px; margin-bottom: 16px; }
+.ot-today span { color: var(--muted); }
+.ot-today b { font-variant-numeric: tabular-nums; }
 .pos { color: var(--pos); } .neg { color: var(--neg); }
 .ot-table { width: 100%; border-collapse: collapse; }
 .ot-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 7px 8px; border-bottom: 1px solid var(--line); }
 .ot-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .ot-table tr.weekend td { color: var(--muted); }
+.ot-table tr.pending td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.ot-table td.muted { color: var(--muted); }
 
 /* Einstellungen */
 .view section { margin-bottom: 24px; }

@@ -88,7 +88,7 @@ const AI_KEY_URL: Record<AiProvider, string> = {
 const AI_PROVIDER_LABEL: Record<AiProvider, string> = { gemini: 'Google Gemini', openai: 'OpenAI', minimax: 'MiniMax' }
 interface ApiServerConfig { enabled: boolean; port: number; token: string }
 interface BackupConfig { auto: boolean; intervalHours: number; folder: string; keep: number }
-interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean }
+interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean; pending?: boolean }
 interface OvertimeResult { balanceHours: number; days: OvertimeDay[] }
 
 const DEFAULT_CFG: Cfg = {
@@ -669,21 +669,32 @@ function OvertimeView() {
   useEffect(() => { window.wt.overtime().then(setData) }, [])
   if (!data) return <div className="view pad">lädt…</div>
   const balCls = data.balanceHours >= 0 ? 'pos' : 'neg'
+  const todayD = data.days.find(d => d.pending)
+  // Heute-Status: noch X bis Ziel, oder + über Soll.
+  const todayInfo = todayD ? (() => {
+    const remain = todayD.targetHours - todayD.workedHours
+    if (todayD.targetHours <= 0) return `${hm(todayD.workedHours * 3600)} (kein Soll heute)`
+    if (remain > 0) return `${hm(todayD.workedHours * 3600)} von ${todayD.targetHours}:00 h — noch ${hm(remain * 3600)}`
+    return `${hm(todayD.workedHours * 3600)} — Soll erreicht, +${hm(-remain * 3600)} über Soll`
+  })() : null
   return (
     <div className="view pad scroll">
       <div className="ot-balance">
-        <span>Überstunden-Saldo</span>
+        <span>Überstunden-Saldo<small> (abgeschlossene Tage)</small></span>
         <b className={balCls}>{hmSigned(data.balanceHours)}</b>
       </div>
+      {todayInfo && <div className="ot-today"><span>Heute läuft</span><b>{todayInfo}</b></div>}
       <table className="ot-table">
         <thead><tr><th>Tag</th><th>Gearbeitet</th><th>Ziel</th><th>Saldo</th></tr></thead>
         <tbody>
           {[...data.days].reverse().map(d => (
-            <tr key={d.date} className={d.isWorkday ? '' : 'weekend'}>
-              <td>{new Date(d.date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}</td>
+            <tr key={d.date} className={`${d.isWorkday ? '' : 'weekend'} ${d.pending ? 'pending' : ''}`}>
+              <td>{new Date(d.date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}{d.pending ? ' · heute' : ''}</td>
               <td>{hm(d.workedHours * 3600)}</td>
               <td>{d.targetHours > 0 ? `${d.targetHours}h` : '–'}</td>
-              <td className={d.deltaHours >= 0 ? 'pos' : 'neg'}>{hmSigned(d.deltaHours)}</td>
+              {d.pending
+                ? <td className="muted">läuft{d.targetHours > 0 && d.workedHours > d.targetHours ? ` (+${hm((d.workedHours - d.targetHours) * 3600)})` : ''}</td>
+                : <td className={d.deltaHours >= 0 ? 'pos' : 'neg'}>{hmSigned(d.deltaHours)}</td>}
             </tr>
           ))}
           {data.days.length === 0 && <tr><td colSpan={4}>noch keine Daten</td></tr>}
