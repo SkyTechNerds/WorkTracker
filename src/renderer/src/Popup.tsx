@@ -10,7 +10,27 @@ function clock(ms: number): string {
 
 export function Popup({ kind, from, to, title }: { kind: string; from: number; to: number; title?: string }) {
   if (kind === 'meeting') return <MeetingPopup from={from} to={to} suggested={title || ''} />
+  if (kind === 'name') return <NamePopup />
   return <PromptPopup />
+}
+
+function NamePopup() {
+  const [name, setName] = useState('')
+  const submit = () => window.wt.popupResult('name', name.trim())
+  return (
+    <div className="popup">
+      <h2>Willkommen 👋</h2>
+      <p className="sub">Wie heißt du? Der Name erscheint im Monatsbericht (für Projektmanager).</p>
+      <input autoFocus value={name} placeholder="z. B. Christian Schimanski"
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && name.trim()) submit() }} />
+      <div className="popup-actions">
+        <button onClick={() => window.wt.popupResult('name', '')}>Später</button>
+        <span style={{ flex: 1 }} />
+        <button className="primary" onClick={submit} disabled={!name.trim()}>Speichern</button>
+      </div>
+    </div>
+  )
 }
 
 function PromptPopup() {

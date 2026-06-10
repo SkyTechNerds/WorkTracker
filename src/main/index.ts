@@ -159,10 +159,10 @@ const hhmmToMs = (dayBase: number, hhmm: string): number | null => {
 }
 const dayStr = (ms: number) => new Date(ms).toLocaleDateString('sv-SE')
 
-function openPopup(kind: 'prompt' | 'meeting', payload: Record<string, string>) {
+function openPopup(kind: 'prompt' | 'meeting' | 'name', payload: Record<string, string>) {
   if (popup) { popup.focus(); return }
   popup = new BrowserWindow({
-    width: 360, height: kind === 'meeting' ? 330 : 210,
+    width: 360, height: kind === 'meeting' ? 330 : kind === 'name' ? 250 : 210,
     resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
     alwaysOnTop: true, skipTaskbar: true, title: 'WorkTracker',
     // Hintergrund themengerecht – sonst weiße Defaultfarbe (Dark Mode: weiß auf weiß).
@@ -455,6 +455,9 @@ function setupIpc() {
       if (value === '__none__') unlabelMeeting(start, end)
       else labelMeeting(start, end, value || 'Meeting')
       pendingMeeting = null
+    } else if (kind === 'name') {
+      const name = (value || '').trim()
+      if (name) { config.employeeName = name; saveConfig(config); win?.webContents.send('config-changed') }
     }
     popup?.close()
     return true
@@ -539,6 +542,8 @@ app.whenReady().then(() => {
   applyBackupTimer()
   setTimeout(() => maybeMonthlyReport(), 5000) // Monatswechsel beim Start prüfen
   setInterval(() => maybeMonthlyReport(), 6 * 3600_000) // + alle 6h (falls App lange läuft)
+  // Kein Name gesetzt? -> beim Start danach fragen (für den Monatsbericht).
+  if (!config.employeeName?.trim()) setTimeout(() => openPopup('name', {}), 2500)
 
   // Update-Check beim Start und alle 6 Stunden.
   setTimeout(() => doCheckUpdate(false), 8000)
