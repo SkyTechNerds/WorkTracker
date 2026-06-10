@@ -11,7 +11,22 @@ function clock(ms: number): string {
 export function Popup({ kind, from, to, title }: { kind: string; from: number; to: number; title?: string }) {
   if (kind === 'meeting') return <MeetingPopup from={from} to={to} suggested={title || ''} />
   if (kind === 'name') return <NamePopup />
+  if (kind === 'tenhour') return <TenHourPopup hours={title || '10'} />
   return <PromptPopup />
+}
+
+function TenHourPopup({ hours }: { hours: string }) {
+  return (
+    <div className="popup">
+      <h2>⏱ {hours}-Stunden-Grenze erreicht</h2>
+      <p className="sub">Du hast heute <b>{hours} h</b> gearbeitet — die gesetzliche Tagesobergrenze (Arbeitszeitgesetz §3). Weitermachen oder Feierabend?</p>
+      <div className="popup-actions">
+        <button onClick={() => window.wt.popupResult('tenhour', 'weiter')}>Weitermachen</button>
+        <span style={{ flex: 1 }} />
+        <button className="primary" onClick={() => window.wt.popupResult('tenhour', 'feierabend')}><Icon name="moon" size={15} /> Feierabend</button>
+      </div>
+    </div>
+  )
 }
 
 function NamePopup() {

@@ -146,6 +146,20 @@ function applyApiServer() {
 }
 
 let callStart: number | null = null          // Beginn des laufenden Calls
+let tenHourNotifiedDay = ''                   // Tag, an dem das 10h-Popup schon kam
+
+// Warn-Popup, wenn die gesetzliche Tagesgrenze (ArbZG, Standard 10h) erreicht ist.
+function checkDailyLimit() {
+  const limit = config.dailyLimitHours
+  if (!limit || limit <= 0) return
+  if (tracker.displayStatus === 'Feierabend') return
+  const dk = dayKey(Date.now())
+  if (tenHourNotifiedDay === dk) return
+  if (tracker.todaySummary().workedSeconds >= limit * 3600) {
+    tenHourNotifiedDay = dk
+    openPopup('tenhour', { title: String(limit) })
+  }
+}
 let pendingMeeting: { start: number; end: number } | null = null
 let lastPromptDay = ''
 
@@ -157,10 +171,10 @@ const hhmmToMs = (dayBase: number, hhmm: string): number | null => {
 }
 const dayStr = (ms: number) => new Date(ms).toLocaleDateString('sv-SE')
 
-function openPopup(kind: 'prompt' | 'meeting' | 'name', payload: Record<string, string>) {
+function openPopup(kind: 'prompt' | 'meeting' | 'name' | 'tenhour', payload: Record<string, string>) {
   if (popup) { popup.focus(); return }
   popup = new BrowserWindow({
-    width: 360, height: kind === 'meeting' ? 385 : kind === 'name' ? 250 : 210,
+    width: 360, height: kind === 'meeting' ? 385 : kind === 'name' ? 250 : kind === 'tenhour' ? 240 : 210,
     resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
     alwaysOnTop: true, skipTaskbar: true, title: 'WorkTracker',
     // Hintergrund themengerecht – sonst weiße Defaultfarbe (Dark Mode: weiß auf weiß).
@@ -456,6 +470,8 @@ function setupIpc() {
     } else if (kind === 'name') {
       const name = (value || '').trim()
       if (name) { config.employeeName = name; saveConfig(config); win?.webContents.send('config-changed') }
+    } else if (kind === 'tenhour') {
+      if (value === 'feierabend') endDay()
     }
     popup?.close()
     return true
@@ -514,7 +530,7 @@ app.whenReady().then(() => {
     notify('Teams-API nicht erreichbar',
       'In Teams die Drittanbieter-API aktivieren (Einstellungen → Datenschutz), damit Meetings automatisch erkannt werden.')
   })
-  tracker.on('update', () => { refreshTray(); win?.webContents.send('tick'); publishMqtt() })
+  tracker.on('update', () => { refreshTray(); win?.webContents.send('tick'); publishMqtt(); checkDailyLimit() })
 
   setupIpc()
   buildTray()
@@ -534,7 +550,7 @@ app.whenReady().then(() => {
   setTimeout(() => doCheckUpdate(false), 8000)
   setInterval(() => doCheckUpdate(false), 6 * 3600_000)
   // MQTT regelmäßig auffrischen (Überstunden/Woche ändern sich auch ohne Event).
-  setInterval(() => publishMqtt(), 60_000)
+  setInterval(() => { publishMqtt(); checkDailyLimit() }, 60_000)
 })
 
 app.on('window-all-closed', () => { /* Tray-App bleibt aktiv – kein Quit */ })

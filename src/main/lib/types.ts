@@ -63,6 +63,7 @@ export interface AppConfig {
   targetHoursPerDay: number
   workdayWeekdays: number[] // 1=So..7=Sa
   overtimeStartBalanceHours: number
+  dailyLimitHours: number // Warn-Popup bei erreichter Tagesgrenze (ArbZG 10h); 0 = aus
   // Projekte
   projects: Project[]
   // MQTT
@@ -193,6 +194,7 @@ export function defaultConfig(): AppConfig {
     targetHoursPerDay: 8,
     workdayWeekdays: [2, 3, 4, 5, 6],
     overtimeStartBalanceHours: 0,
+    dailyLimitHours: 10,
     projects: [],
     mqtt: defaultMqttConfig(),
     ai: defaultAiConfig(),

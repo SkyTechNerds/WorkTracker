@@ -60,7 +60,7 @@ interface Cfg {
   promptMode: 'off' | 'onceADay' | 'afterBreaks' | 'everyUnlock'; promptAfterBreakMinutes: number
   endDayOnSleep: boolean; detectTeamsApi: boolean; askMeetingTitle: boolean; launchAtLogin: boolean
   employeeName: string
-  targetHoursPerDay: number; workdayWeekdays: number[]; overtimeStartBalanceHours: number
+  targetHoursPerDay: number; workdayWeekdays: number[]; overtimeStartBalanceHours: number; dailyLimitHours: number
   projects: Project[]
   mqtt: MqttConfig
   ai: AiConfig
@@ -102,7 +102,7 @@ const DEFAULT_CFG: Cfg = {
   promptMode: 'afterBreaks', promptAfterBreakMinutes: 20,
   endDayOnSleep: true, detectTeamsApi: false, askMeetingTitle: true, launchAtLogin: true,
   employeeName: '',
-  targetHoursPerDay: 8, workdayWeekdays: [2, 3, 4, 5, 6], overtimeStartBalanceHours: 0,
+  targetHoursPerDay: 8, workdayWeekdays: [2, 3, 4, 5, 6], overtimeStartBalanceHours: 0, dailyLimitHours: 10,
   projects: [],
   mqtt: {
     enabled: false, host: '', port: 1883, username: '', password: '',
@@ -806,6 +806,7 @@ function SettingsView() {
             <section>
               <h3>Überstunden</h3>
               {num('targetHoursPerDay', 'Soll-Stunden/Tag', 0, 24)}
+              {num('dailyLimitHours', 'Warn-Popup bei Tagesstunden (ArbZG 10h, 0 = aus)', 0, 24)}
               {num('overtimeStartBalanceHours', 'Startsaldo (Stunden)', -9999, 9999)}
               <div className="row">Arbeitstage
                 <div className="weekdays">
