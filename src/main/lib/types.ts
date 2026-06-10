@@ -72,6 +72,8 @@ export interface AppConfig {
   apiServer: ApiServerConfig
   // Backup (Export/Import + automatisch)
   backup: BackupConfig
+  // Monatsbericht (automatisch bei Monatswechsel)
+  report: ReportConfig
 }
 
 export interface BackupConfig {
@@ -86,6 +88,16 @@ export interface BackupConfig {
 
 export function defaultBackupConfig(): BackupConfig {
   return { auto: false, onFeierabend: true, onNewDay: true, intervalHours: 24, folder: '', keep: 14 }
+}
+
+export interface ReportConfig {
+  monthly: boolean   // Monatsbericht bei Monatswechsel automatisch erstellen
+  folder: string     // Zielordner (leer = userData/reports)
+  lastMonth: string  // intern: YYYY-MM des zuletzt erzeugten Berichts
+}
+
+export function defaultReportConfig(): ReportConfig {
+  return { monthly: true, folder: '', lastMonth: '' }
 }
 
 export interface ApiServerConfig {
@@ -184,7 +196,8 @@ export function defaultConfig(): AppConfig {
     mqtt: defaultMqttConfig(),
     ai: defaultAiConfig(),
     apiServer: defaultApiServerConfig(),
-    backup: defaultBackupConfig()
+    backup: defaultBackupConfig(),
+    report: defaultReportConfig()
   }
 }
 

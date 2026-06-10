@@ -10,7 +10,7 @@ import { segments as deriveDay } from './lib/day'
 import { gitEmails } from './lib/git'
 import { checkForUpdate } from './lib/updater'
 import { computeOvertime, weekWorkedSeconds } from './lib/overtime'
-import { reportMarkdown, reportCsv } from './lib/report'
+import { reportMarkdown, reportCsv, buildMonthReport } from './lib/report'
 import { MqttPublisher, WTSnapshot } from './lib/mqtt'
 import { assignTicketsForDay, testAi, listModels } from './lib/ai'
 import { ApiServer } from './lib/apiServer'
@@ -75,6 +75,65 @@ function applyBackupTimer() {
     maybeTimeBackup() // sofortiger Nachhol-Check (z. B. App war >24h aus)
     backupTimer = setInterval(maybeTimeBackup, 3600_000) // stündlich prüfen
   }
+}
+
+// ---- Monatsbericht ----
+function reportsFolder(): string {
+  return config.report?.folder?.trim() || path.join(app.getPath('userData'), 'reports')
+}
+const monthKey = (y: number, m: number) => `${y}-${String(m + 1).padStart(2, '0')}`
+
+/** Einen Monatsbericht (HTML + CSV) erzeugen; gibt den HTML-Pfad zurück oder null (kein Daten-Monat). */
+function generateMonthReport(year: number, month: number): string | null {
+  const rep = buildMonthReport(year, month, Date.now(), graceSeconds(), config)
+  if (rep.totalSeconds <= 0 || rep.workDays === 0) return null // leeren Monat nicht schreiben
+  const folder = reportsFolder()
+  try {
+    fs.mkdirSync(folder, { recursive: true })
+    const base = `worktracker-monatsbericht-${rep.key}`
+    const htmlPath = path.join(folder, base + '.html')
+    fs.writeFileSync(htmlPath, rep.html)
+    fs.writeFileSync(path.join(folder, base + '.csv'), rep.csv)
+    return htmlPath
+  } catch { return null }
+}
+
+function notifyReport(year: number, month: number, htmlPath: string) {
+  const label = new Date(year, month, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+  const folder = reportsFolder()
+  if (!Notification.isSupported()) return
+  const n = new Notification({
+    title: `Monatsbericht ${label} erstellt`,
+    body: `Liegt in: ${folder}\nKlicken zum Anzeigen im Finder.`,
+    actions: [{ type: 'button', text: 'Ordner öffnen' }]
+  })
+  n.on('click', () => shell.showItemInFolder(htmlPath))
+  n.on('action', () => shell.openPath(folder))
+  n.show()
+}
+
+/** Bei Monatswechsel den/die abgeschlossenen Monat(e) berichten (max. 12 zurück), die noch fehlen. */
+function maybeMonthlyReport() {
+  if (!config.report?.monthly) return
+  const now = new Date()
+  const cands: { y: number; m: number; key: string }[] = []
+  for (let back = 1; back <= 12; back++) {
+    const dt = new Date(now.getFullYear(), now.getMonth() - back, 1)
+    const key = monthKey(dt.getFullYear(), dt.getMonth())
+    if (config.report.lastMonth && key <= config.report.lastMonth) break
+    cands.push({ y: dt.getFullYear(), m: dt.getMonth(), key })
+  }
+  if (!cands.length) return
+  // Erstlauf (noch nie berichtet): nur den jüngsten abgeschlossenen Monat, nicht rückwirkend alles.
+  const list = config.report.lastMonth ? cands.reverse() : [cands[0]]
+  let newest = config.report.lastMonth || ''
+  for (const c of list) {
+    const html = generateMonthReport(c.y, c.m)
+    if (html) notifyReport(c.y, c.m, html)
+    if (c.key > newest) newest = c.key
+  }
+  config.report.lastMonth = newest || cands[0].key
+  saveConfig(config)
 }
 
 /** API-Server (neu) konfigurieren – Token sicherstellen, wenn aktiviert. */
@@ -358,6 +417,19 @@ function setupIpc() {
     if (r.ok) { config.backup.lastBackupTs = Date.now(); saveConfig(config) }
     return r
   })
+  // Monatsbericht für den AKTUELLEN Monat (Stand jetzt) manuell erzeugen.
+  ipcMain.handle('report-month-now', () => {
+    const now = new Date()
+    const html = generateMonthReport(now.getFullYear(), now.getMonth())
+    if (!html) return { ok: false, error: 'Kein Bericht – in diesem Monat wurde noch nichts erfasst.' }
+    return { ok: true, file: html, folder: reportsFolder() }
+  })
+  ipcMain.handle('open-reports-folder', async () => {
+    const folder = reportsFolder()
+    try { fs.mkdirSync(folder, { recursive: true }) } catch { /* */ }
+    await shell.openPath(folder)
+    return { ok: true, folder }
+  })
   ipcMain.handle('ai-assign-day', async (_e, dateMs: number) => {
     const segs = deriveDay(dateMs, Date.now(), graceSeconds())
     const dayStart = startOfDay(dateMs)
@@ -439,12 +511,15 @@ app.whenReady().then(() => {
   })
   tracker.on('activated', ({ reason, breakSeconds }: { reason: string; breakSeconds: number }) => {
     maybePrompt(reason, breakSeconds)
-    // Neuer Arbeitstag begonnen (erster Arbeitsstart an einem Tag, an dem noch nicht
-    // gesichert wurde) -> den letzten abgeschlossenen Tag sichern.
-    if (config.backup?.auto && config.backup.onNewDay && config.backup.folder
-      && dayKey(Date.now()) !== (config.backup.lastBackupTs ? dayKey(config.backup.lastBackupTs) : '')) {
-      runAutoBackup(true)
+    // Neuer Arbeitstag begonnen -> letzten abgeschlossenen Tag sichern, ABER nicht,
+    // wenn er bereits per Feierabend gesichert wurde (kein Doppel-Backup desselben Tages).
+    if (config.backup?.auto && config.backup.onNewDay && config.backup.folder) {
+      const prevDay = startOfDay(Date.now()) - 86400000
+      const alreadyByFeierabend = config.backup.onFeierabend && isDayEnded(prevDay)
+      const newDaySinceBackup = dayKey(Date.now()) !== (config.backup.lastBackupTs ? dayKey(config.backup.lastBackupTs) : '')
+      if (!alreadyByFeierabend && newDaySinceBackup) runAutoBackup(true)
     }
+    maybeMonthlyReport() // Monatswechsel -> Bericht des Vormonats
   })
   teams.on('unreachable', () => {
     notify('Teams-API nicht erreichbar',
@@ -461,6 +536,8 @@ app.whenReady().then(() => {
   if (config.mqtt?.enabled) mqtt.configure(config.mqtt)
   applyApiServer()
   applyBackupTimer()
+  setTimeout(() => maybeMonthlyReport(), 5000) // Monatswechsel beim Start prüfen
+  setInterval(() => maybeMonthlyReport(), 6 * 3600_000) // + alle 6h (falls App lange läuft)
 
   // Update-Check beim Start und alle 6 Stunden.
   setTimeout(() => doCheckUpdate(false), 8000)

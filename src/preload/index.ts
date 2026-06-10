@@ -28,6 +28,8 @@ const api = {
   exportBackup: () => ipcRenderer.invoke('export-backup'),
   importBackup: () => ipcRenderer.invoke('import-backup'),
   backupNow: () => ipcRenderer.invoke('backup-now'),
+  reportMonthNow: () => ipcRenderer.invoke('report-month-now'),
+  openReportsFolder: () => ipcRenderer.invoke('open-reports-folder'),
   onTick: (cb: () => void) => {
     const h = () => cb()
     ipcRenderer.on('tick', h)

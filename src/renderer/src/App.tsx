@@ -27,6 +27,8 @@ declare global {
       exportBackup: () => Promise<{ ok: boolean; file?: string; error?: string }>
       importBackup: () => Promise<{ ok: boolean; error?: string }>
       backupNow: () => Promise<{ ok: boolean; file?: string; error?: string }>
+      reportMonthNow: () => Promise<{ ok: boolean; file?: string; folder?: string; error?: string }>
+      openReportsFolder: () => Promise<{ ok: boolean; folder?: string }>
       aiTest: (ai: AiConfig) => Promise<{ ok: boolean; error?: string }>
       aiModels: (ai: AiConfig) => Promise<{ models: string[]; error?: string }>
       aiAssignDay: (dateMs: number) => Promise<{ count: number; error?: string }>
@@ -63,6 +65,7 @@ interface Cfg {
   ai: AiConfig
   apiServer: ApiServerConfig
   backup: BackupConfig
+  report: ReportConfig
 }
 interface MqttPublishFlags {
   status: boolean; inCall: boolean; callTitle: boolean; workedToday: boolean
@@ -88,6 +91,7 @@ const AI_KEY_URL: Record<AiProvider, string> = {
 const AI_PROVIDER_LABEL: Record<AiProvider, string> = { gemini: 'Google Gemini', openai: 'OpenAI', minimax: 'MiniMax' }
 interface ApiServerConfig { enabled: boolean; port: number; token: string }
 interface BackupConfig { auto: boolean; onFeierabend: boolean; onNewDay: boolean; intervalHours: number; folder: string; keep: number; lastBackupTs?: number }
+interface ReportConfig { monthly: boolean; folder: string; lastMonth: string }
 interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean; pending?: boolean }
 interface OvertimeResult { balanceHours: number; days: OvertimeDay[] }
 
@@ -105,7 +109,8 @@ const DEFAULT_CFG: Cfg = {
   },
   ai: { enabled: false, provider: 'gemini', apiKey: '', model: 'gemini-2.5-flash' },
   apiServer: { enabled: false, port: 8787, token: '' },
-  backup: { auto: false, onFeierabend: true, onNewDay: true, intervalHours: 24, folder: '', keep: 14 }
+  backup: { auto: false, onFeierabend: true, onNewDay: true, intervalHours: 24, folder: '', keep: 14 },
+  report: { monthly: true, folder: '', lastMonth: '' }
 }
 
 function hm(seconds: number): string {
@@ -796,7 +801,7 @@ function SettingsView() {
 
           {tab === 'ai' && <AiSection ai={cfg.ai} onChange={a => set('ai', a)} />}
 
-          {tab === 'overtime' && (
+          {tab === 'overtime' && (<>
             <section>
               <h3>Überstunden</h3>
               {num('targetHoursPerDay', 'Soll-Stunden/Tag', 0, 24)}
@@ -811,7 +816,8 @@ function SettingsView() {
                 </div>
               </div>
             </section>
-          )}
+            <ReportSection report={cfg.report} onChange={r => set('report', r)} />
+          </>)}
 
           {tab === 'display' && (
             <section>
@@ -942,6 +948,34 @@ function AiSection({ ai, onChange }: { ai: AiConfig; onChange: (a: AiConfig) => 
           <span className="hint" style={{ margin: 0 }}>{test}</span>
         </div>
       </>}
+    </section>
+  )
+}
+
+function ReportSection({ report, onChange }: { report: ReportConfig; onChange: (r: ReportConfig) => void }) {
+  const [msg, setMsg] = useState('')
+  const set = <K extends keyof ReportConfig>(k: K, v: ReportConfig[K]) => onChange({ ...report, [k]: v })
+  const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 5000) }
+  const pick = async () => { const dir = await window.wt.pickFolder(); if (dir) set('folder', dir) }
+  const makeNow = async () => { const r = await window.wt.reportMonthNow(); flash(r.ok ? '✓ Bericht erstellt: ' + (r.file || '') : '✕ ' + (r.error || 'Fehler')) }
+  const openFolder = () => window.wt.openReportsFolder()
+  return (
+    <section>
+      <h3>Monatsbericht (für Projektmanager)</h3>
+      <p className="hint">Erstellt bei Monatswechsel automatisch einen Bericht des Vormonats (HTML + CSV): Aufwände gesamt, je Woche, je Projekt/Ticket und je Tag. Eine Benachrichtigung zeigt an, wo er liegt.</p>
+      <label className="row check"><input type="checkbox" checked={report.monthly} onChange={e => set('monthly', e.target.checked)} /> Monatsbericht automatisch erstellen</label>
+      <div className="row">Zielordner
+        <span style={{ display: 'flex', gap: 6, flex: 1 }}>
+          <input style={{ flex: 1 }} readOnly value={report.folder} placeholder="– Standard: App-Ordner/reports –" />
+          <button className="add" onClick={pick}>Ordner…</button>
+        </span>
+      </div>
+      <div className="row" style={{ justifyContent: 'flex-start', gap: 10 }}>
+        <button className="add" onClick={makeNow}>Bericht (aktueller Monat) jetzt erstellen</button>
+        <button className="add" onClick={openFolder}>Ordner öffnen</button>
+      </div>
+      {report.lastMonth && <p className="hint">Zuletzt erstellter Bericht: {report.lastMonth}</p>}
+      {msg && <p className="hint" style={{ color: msg.startsWith('✓') ? 'var(--pos)' : 'var(--neg)' }}>{msg}</p>}
     </section>
   )
 }
