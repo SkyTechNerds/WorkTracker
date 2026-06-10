@@ -67,13 +67,43 @@ const dec = (seconds: number) => (seconds / 3600).toFixed(2)
 const esc = (v: string) => String(v).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!))
 const pct = (part: number, total: number) => total > 0 ? `${Math.round(part / total * 100)} %` : '–'
 
-interface ProjAgg { name: string; seconds: number; tickets: Record<string, number> }
+interface ProjAgg { name: string; seconds: number; tickets: Record<string, number>; color?: string }
 interface WeekAgg { week: number; label: string; seconds: number; projects: Record<string, number> }
+
+const PALETTE = ['#2f6df6', '#34c759', '#ff9500', '#af52de', '#ff2d55', '#5ac8fa', '#ffcc00', '#30b0c7', '#a2845e', '#8e8e93']
+
+// Donut-Diagramm (Inline-SVG) für die Projektverteilung.
+function svgDonut(data: { name: string; seconds: number; color: string }[], total: number): string {
+  const r = 70, cx = 90, cy = 90, sw = 26, C = 2 * Math.PI * r
+  let offset = 0
+  const arcs = data.map(d => {
+    const len = (total > 0 ? d.seconds / total : 0) * C
+    const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${d.color}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`
+    offset += len
+    return seg
+  }).join('')
+  return `<svg viewBox="0 0 180 180" width="180" height="180" role="img">${arcs}<text x="${cx}" y="${cy - 1}" text-anchor="middle" font-size="19" font-weight="700">${hm(total)}</text><text x="${cx}" y="${cy + 16}" text-anchor="middle" font-size="11" fill="#6e6e73">gesamt</text></svg>`
+}
+
+// Balkendiagramm (Inline-SVG) – Werte in Sekunden, Beschriftung in Stunden.
+function svgBars(data: { label: string; seconds: number }[], color: string): string {
+  const n = Math.max(1, data.length), bw = 30, gap = 22, padL = 8, padB = 26, padT = 16
+  const w = padL + n * (bw + gap), h = 180, max = Math.max(1, ...data.map(d => d.seconds))
+  const plot = h - padB - padT
+  const bars = data.map((d, i) => {
+    const bh = (d.seconds / max) * plot
+    const x = padL + i * (bw + gap), y = h - padB - bh
+    return `<rect x="${x}" y="${y.toFixed(1)}" width="${bw}" height="${Math.max(1, bh).toFixed(1)}" rx="4" fill="${color}"/>`
+      + `<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" text-anchor="middle" font-size="10" fill="#1d1d1f">${(d.seconds / 3600).toFixed(1)}</text>`
+      + `<text x="${(x + bw / 2).toFixed(1)}" y="${h - padB + 14}" text-anchor="middle" font-size="10" fill="#6e6e73">${esc(d.label)}</text>`
+  }).join('')
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img"><line x1="${padL}" y1="${h - padB}" x2="${w}" y2="${h - padB}" stroke="#e3e3e6"/>${bars}</svg>`
+}
 
 export interface MonthReport { year: number; month: number; key: string; html: string; csv: string; totalSeconds: number; workDays: number }
 
 /** Monatsbericht: gruppiert nach Projekt/Ticket, Woche und Tag. month = 0..11. */
-export function buildMonthReport(year: number, month: number, nowMs: number, graceSeconds: number, _config: AppConfig): MonthReport {
+export function buildMonthReport(year: number, month: number, nowMs: number, graceSeconds: number, config: AppConfig): MonthReport {
   const first = new Date(year, month, 1)
   const last = new Date(year, month + 1, 0)
   const projects: Record<string, ProjAgg> = {}
@@ -112,6 +142,19 @@ export function buildMonthReport(year: number, month: number, nowMs: number, gra
   const weekList = Object.values(weeks).sort((a, b) => a.week - b.week)
   const key = `${year}-${String(month + 1).padStart(2, '0')}`
 
+  // Farben je Projekt (Projektfarbe aus Config, sonst Palette/Sonderfälle).
+  const colorOf = (name: string, idx: number): string => {
+    const c = config.projects?.find(x => x.name === name)?.color
+    if (c) return c
+    if (name === 'Meetings') return '#af52de'
+    if (name === 'Ohne Projekt') return '#8e8e93'
+    return PALETTE[idx % PALETTE.length]
+  }
+  projList.forEach((p, i) => { p.color = colorOf(p.name, i) })
+  const donutData = projList.map(p => ({ name: p.name, seconds: p.seconds, color: p.color! }))
+  const weekBars = weekList.map(w => ({ label: `KW${w.week}`, seconds: w.seconds }))
+  const dayBars = dayRows.map(r => ({ label: `${new Date(r.ms).getDate()}.`, seconds: r.worked }))
+
   // ---- HTML ----
   const h: string[] = []
   h.push(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Monatsbericht ${esc(monthLabel)}</title>`)
@@ -127,8 +170,14 @@ export function buildMonthReport(year: number, month: number, nowMs: number, gra
     th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
     td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
     tr.proj td{font-weight:600;background:var(--bg)} tr.tick td:first-child{padding-left:26px;color:var(--mut)}
+    td .dot{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:7px;vertical-align:middle}
+    .charts{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;margin:10px 0 4px}
+    .chart h3{font-size:13px;color:var(--mut);margin:0 0 8px;font-weight:600}
+    .legend{display:flex;flex-direction:column;gap:5px;margin-top:10px;font-size:12px}
+    .legend span{display:flex;align-items:center;gap:7px} .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+    .scrollx{overflow-x:auto;max-width:100%;padding-bottom:4px}
     .foot{color:var(--mut);font-size:12px;margin-top:28px}
-    @media print{body{padding:0}}
+    @media print{body{padding:0} .scrollx{overflow:visible}}
   </style></head><body>`)
   h.push(`<h1>Monatsbericht – ${esc(monthLabel)}</h1>`)
   h.push(`<div class="meta">Erstellt am ${new Date(nowMs).toLocaleString('de-DE')} · WorkTracker</div>`)
@@ -140,9 +189,16 @@ export function buildMonthReport(year: number, month: number, nowMs: number, gra
     <div class="card"><b>${hm(totalBreak)}</b><span>Pausen</span></div>
   </div>`)
 
+  h.push(`<h2>Übersicht</h2><div class="charts">
+    <div class="chart"><h3>Projektverteilung</h3>${svgDonut(donutData, totalWorked)}
+      <div class="legend">${projList.map(p => `<span><i style="background:${p.color}"></i>${esc(p.name)} · ${hm(p.seconds)} (${pct(p.seconds, totalWorked)})</span>`).join('')}</div></div>
+    <div class="chart"><h3>Stunden je Woche</h3><div class="scrollx">${svgBars(weekBars, '#2f6df6')}</div></div>
+  </div>`)
+  h.push(`<div class="chart" style="margin-top:14px"><h3>Stunden je Tag</h3><div class="scrollx">${svgBars(dayBars, '#34c759')}</div></div>`)
+
   h.push(`<h2>Aufwand je Projekt &amp; Ticket</h2><table><thead><tr><th>Projekt / Ticket</th><th class="num">Stunden</th><th class="num">Dezimal</th><th class="num">Anteil</th></tr></thead><tbody>`)
   for (const p of projList) {
-    h.push(`<tr class="proj"><td>${esc(p.name)}</td><td class="num">${hm(p.seconds)}</td><td class="num">${dec(p.seconds)}</td><td class="num">${pct(p.seconds, totalWorked)}</td></tr>`)
+    h.push(`<tr class="proj"><td><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</td><td class="num">${hm(p.seconds)}</td><td class="num">${dec(p.seconds)}</td><td class="num">${pct(p.seconds, totalWorked)}</td></tr>`)
     for (const [tk, sec] of Object.entries(p.tickets).sort((a, b) => b[1] - a[1])) {
       h.push(`<tr class="tick"><td>${esc(tk)}</td><td class="num">${hm(sec)}</td><td class="num">${dec(sec)}</td><td class="num"></td></tr>`)
     }
