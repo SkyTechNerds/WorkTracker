@@ -8,8 +8,8 @@ function clock(ms: number): string {
   const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-export function Popup({ kind, from, to }: { kind: string; from: number; to: number }) {
-  if (kind === 'meeting') return <MeetingPopup from={from} to={to} />
+export function Popup({ kind, from, to, title }: { kind: string; from: number; to: number; title?: string }) {
+  if (kind === 'meeting') return <MeetingPopup from={from} to={to} suggested={title || ''} />
   return <PromptPopup />
 }
 
@@ -28,8 +28,8 @@ function PromptPopup() {
   )
 }
 
-function MeetingPopup({ from, to }: { from: number; to: number }) {
-  const [title, setTitle] = useState('')
+function MeetingPopup({ from, to, suggested }: { from: number; to: number; suggested: string }) {
+  const [title, setTitle] = useState(suggested)
   const [f, setF] = useState(clock(from))
   const [t, setT] = useState(clock(to))
   const payload = () => ({ from: f, to: t })
@@ -37,12 +37,13 @@ function MeetingPopup({ from, to }: { from: number; to: number }) {
   return (
     <div className="popup">
       <h2>Meeting beendet</h2>
-      <p className="sub">Zeitraum prüfen + Titel vergeben (optional)</p>
+      <p className="sub">{suggested ? 'Titel aus dem Kalender übernommen – prüfen/anpassen' : 'Zeitraum prüfen + Titel vergeben (optional)'}</p>
       <div className="popup-times">
         <label>Von <input type="time" value={f} onChange={e => setF(e.target.value)} /></label>
         <label>Bis <input type="time" value={t} onChange={e => setT(e.target.value)} /></label>
       </div>
       <input autoFocus value={title} placeholder="z. B. Daily, Sprint Review…"
+        onFocus={e => e.target.select()}
         onChange={e => setTitle(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') submit() }} />
       <button className="link-danger" onClick={() => window.wt.popupResult('meeting', '__none__', payload())}>

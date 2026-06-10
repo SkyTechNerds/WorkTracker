@@ -56,6 +56,7 @@ export interface AppConfig {
   endDayOnSleep: boolean
   detectTeamsApi: boolean
   askMeetingTitle: boolean
+  meetingTitleFromCalendar: boolean
   launchAtLogin: boolean
   // Überstunden
   targetHoursPerDay: number
@@ -171,6 +172,7 @@ export function defaultConfig(): AppConfig {
     endDayOnSleep: true,
     detectTeamsApi: false,
     askMeetingTitle: true,
+    meetingTitleFromCalendar: true,
     launchAtLogin: true,
     targetHoursPerDay: 8,
     workdayWeekdays: [2, 3, 4, 5, 6],

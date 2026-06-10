@@ -5,6 +5,7 @@ import path from 'node:path'
 import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegments, resetToAuto, setDayEnded, clearDayEnded, isDayEnded } from './lib/store'
 import { Tracker } from './lib/tracker'
 import { TeamsClient } from './lib/teams'
+import { currentMeetingTitle } from './lib/calendar'
 import { segments as deriveDay } from './lib/day'
 import { gitEmails } from './lib/git'
 import { checkForUpdate } from './lib/updater'
@@ -70,6 +71,7 @@ function applyApiServer() {
 }
 
 let callStart: number | null = null          // Beginn des laufenden Calls
+let callTitle: string | null = null          // aus dem Kalender gelesener Titel des laufenden Calls
 let pendingMeeting: { start: number; end: number } | null = null
 let lastPromptDay = ''
 
@@ -391,13 +393,26 @@ app.whenReady().then(() => {
     tracker.setMeeting(inMeeting ? 'Meeting' : null)
     if (inMeeting) {
       callStart = Date.now()
+      callTitle = null
+      // Geplanter Termin? Titel im Hintergrund aus dem Kalender holen (Apple, sonst Outlook)
+      // und live übernehmen (Tray, laufender Block, Samples) – Popup wird damit vorausgefüllt.
+      if (config.meetingTitleFromCalendar !== false) {
+        currentMeetingTitle().then(t => {
+          if (t && callStart && tracker.inCall) {
+            callTitle = t
+            tracker.setMeeting(t)
+            refreshTray(); win?.webContents.send('tick')
+          }
+        }).catch(() => { /* still */ })
+      }
     } else if (callStart) {
       const start = callStart, end = Date.now()
       callStart = null
       if (config.askMeetingTitle && end - start > 60_000) {
         pendingMeeting = { start, end }
-        openPopup('meeting', { from: String(start), to: String(end) })
+        openPopup('meeting', { from: String(start), to: String(end), title: callTitle || '' })
       }
+      callTitle = null
     }
     refreshTray()
   })

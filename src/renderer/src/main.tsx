@@ -29,7 +29,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       {popupKind
-        ? <Popup kind={popupKind} from={Number(hash.get('from')) || 0} to={Number(hash.get('to')) || 0} />
+        ? <Popup kind={popupKind} from={Number(hash.get('from')) || 0} to={Number(hash.get('to')) || 0} title={hash.get('title') || ''} />
         : <App initialView={initialView} />}
     </ErrorBoundary>
   </React.StrictMode>
