@@ -965,7 +965,7 @@ function ReportSection({ report, onChange, employeeName, onName }: { report: Rep
     <section>
       <h3>Monatsbericht (für Projektmanager)</h3>
       <p className="hint">Erstellt bei Monatswechsel automatisch einen Bericht des Vormonats (HTML + CSV): Aufwände gesamt, je Woche, je Projekt/Ticket und je Tag. Eine Benachrichtigung zeigt an, wo er liegt.</p>
-      <label className="row">Name / Mitarbeiter <input type="text" value={employeeName} placeholder="z. B. Christian Schimanski" onChange={e => onName(e.target.value)} /></label>
+      <label className="row">Name / Mitarbeiter <input type="text" value={employeeName} placeholder="z. B. Max Mustermann" onChange={e => onName(e.target.value)} /></label>
       <label className="row check"><input type="checkbox" checked={report.monthly} onChange={e => set('monthly', e.target.checked)} /> Monatsbericht automatisch erstellen</label>
       <div className="row">Zielordner
         <span style={{ display: 'flex', gap: 6, flex: 1 }}>

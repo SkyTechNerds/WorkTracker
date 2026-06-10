@@ -21,7 +21,7 @@ function NamePopup() {
     <div className="popup">
       <h2>Willkommen 👋</h2>
       <p className="sub">Wie heißt du? Der Name erscheint im Monatsbericht (für Projektmanager).</p>
-      <input autoFocus value={name} placeholder="z. B. Christian Schimanski"
+      <input autoFocus value={name} placeholder="z. B. Max Mustermann"
         onChange={e => setName(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && name.trim()) submit() }} />
       <div className="popup-actions">
