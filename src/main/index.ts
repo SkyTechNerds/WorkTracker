@@ -162,7 +162,7 @@ const dayStr = (ms: number) => new Date(ms).toLocaleDateString('sv-SE')
 function openPopup(kind: 'prompt' | 'meeting' | 'name', payload: Record<string, string>) {
   if (popup) { popup.focus(); return }
   popup = new BrowserWindow({
-    width: 360, height: kind === 'meeting' ? 330 : kind === 'name' ? 250 : 210,
+    width: 360, height: kind === 'meeting' ? 385 : kind === 'name' ? 250 : 210,
     resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
     alwaysOnTop: true, skipTaskbar: true, title: 'WorkTracker',
     // Hintergrund themengerecht – sonst weiße Defaultfarbe (Dark Mode: weiß auf weiß).
@@ -175,18 +175,19 @@ function openPopup(kind: 'prompt' | 'meeting' | 'name', payload: Record<string, 
   else popup.loadFile(path.join(__dirname, '../renderer/index.html'), { hash })
 }
 
-/** Meeting-Segmente im Zeitbereich mit echtem Titel versehen (materialisiert). */
-function labelMeeting(startMs: number, endMs: number, title: string) {
+/** Meeting-Segmente im Zeitbereich mit echtem Titel (+ optional Kunde/Projekt) versehen. */
+function labelMeeting(startMs: number, endMs: number, title: string, project?: string) {
   if (!title || title === 'Meeting') return
   const dateMs = startOfDay(startMs)
   const segs = deriveDay(dateMs, Date.now(), graceSeconds())
   if (endMs <= startMs) return
+  const proj = project?.trim() || null
   const out: ReturnType<typeof deriveDay> = []
   for (const s of segs) {
     if (s.kind !== 'work' || s.end <= startMs || s.start >= endMs) { out.push(s); continue }
     const a = Math.max(s.start, startMs), b = Math.min(s.end, endMs)
     if (s.start < a) out.push({ ...s, id: randomUUID(), end: a })
-    out.push({ ...s, id: randomUUID(), start: a, end: b, ticket: title || 'Meeting', meeting: true }) // NUR der Call-Bereich
+    out.push({ ...s, id: randomUUID(), start: a, end: b, ticket: title || 'Meeting', meeting: true, project: proj }) // NUR der Call-Bereich
     if (s.end > b) out.push({ ...s, id: randomUUID(), start: b })
   }
   saveSegments(dateMs, out.sort((x, y) => x.start - y.start))
@@ -439,7 +440,7 @@ function setupIpc() {
     return { count: r.count, error: r.error }
   })
 
-  ipcMain.handle('popup-result', (_e, kind: string, value: string, payload?: { from?: string; to?: string }) => {
+  ipcMain.handle('popup-result', (_e, kind: string, value: string, payload?: { from?: string; to?: string; project?: string }) => {
     if (kind === 'prompt') {
       // Arbeit -> aktiv lassen; Pause/Privat -> gerade gestartetes Arbeiten verwerfen + Pause halten.
       if (value === 'pause' || value === 'privat') tracker.revertActivation()
@@ -453,7 +454,7 @@ function setupIpc() {
         if (s !== null && e !== null && e > s) { start = s; end = e }
       }
       if (value === '__none__') unlabelMeeting(start, end)
-      else labelMeeting(start, end, value || 'Meeting')
+      else labelMeeting(start, end, value || 'Meeting', payload?.project)
       pendingMeeting = null
     } else if (kind === 'name') {
       const name = (value || '').trim()

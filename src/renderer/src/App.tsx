@@ -337,7 +337,7 @@ function CalendarView() {
   const yOff = (ms: number) => { const d = new Date(ms); return ((d.getHours() * 60 + d.getMinutes()) - sh * 60) / 60 * HOUR_H }
   const projColor = (name?: string | null) => name ? cfg.projects.find(p => p.name === name)?.color : undefined
   // Kategorie-Farbe eines Segments (deckungsgleich mit Block-Hintergrund + Gruppenfarbe).
-  const colorForSeg = (s: Seg) => s.kind === 'break' ? 'var(--block-break)' : s.meeting ? 'var(--block-meeting)' : (projColor(s.project) || 'var(--block-work)')
+  const colorForSeg = (s: Seg) => s.kind === 'break' ? 'var(--block-break)' : (projColor(s.project) || (s.meeting ? 'var(--block-meeting)' : 'var(--block-work)'))
 
   // Nach Projekt/Kunde gruppieren, je Gruppe die Tickets einzeln.
   const ticketGroups = (() => {
@@ -346,8 +346,9 @@ function CalendarView() {
     for (const s of segments) {
       if (s.kind !== 'work') continue
       let key: string, name: string, color: string
-      if (s.meeting) { key = '__meet'; name = 'Meetings'; color = 'var(--block-meeting)' }
-      else if (s.project) { key = 'p:' + s.project; name = s.project; color = projColor(s.project) || 'var(--block-work)' }
+      // Kunde/Projekt hat Vorrang – Meetings MIT Projekt erscheinen beim Kunden (abrechenbar).
+      if (s.project) { key = 'p:' + s.project; name = s.project; color = projColor(s.project) || 'var(--block-work)' }
+      else if (s.meeting) { key = '__meet'; name = 'Meetings'; color = 'var(--block-meeting)' }
       else { key = '__none'; name = 'Ohne Projekt'; color = 'var(--block-work)' }
       const g = map[key] || (map[key] = { key, name, color, total: 0, tickets: {} })
       const secs = (s.end - s.start) / 1000
@@ -432,12 +433,12 @@ function CalendarView() {
               const isLive = s.id === liveId
               const baseTitle = s.kind === 'break' ? 'Pause' : (s.ticket || (isMeeting ? 'Meeting' : 'Arbeit'))
               const title = isLive ? `${baseTitle} – ${s.kind === 'break' ? 'läuft' : 'aktiv'}` : baseTitle
-              const pc = s.kind === 'work' && !isMeeting ? projColor(s.project) : undefined
+              const pc = s.kind === 'work' ? projColor(s.project) : undefined
               const style: React.CSSProperties = { top, height }
-              if (isMeeting) { style.background = 'var(--block-meeting)'; style.color = '#fff' }
-              else if (pc) { style.background = pc; style.color = contrastText(pc) }
+              if (pc) { style.background = pc; style.color = contrastText(pc) } // Projekt/Kunde – auch für Meetings
+              else if (isMeeting) { style.background = 'var(--block-meeting)'; style.color = '#fff' }
               return (
-                <div key={isLive ? '__live' : s.id} className={`block ${s.kind} ${isLive ? 'live' : ''} ${hoverKey ? (hoverKey === segKey(s) ? 'hl' : 'dim') : ''}`} style={style}
+                <div key={isLive ? '__live' : s.id} className={`block ${s.kind} ${isMeeting ? 'meeting' : ''} ${isLive ? 'live' : ''} ${hoverKey ? (hoverKey === segKey(s) ? 'hl' : 'dim') : ''}`} style={style}
                   onPointerDown={e => onPointerDown(e, s, 'move')}
                   onMouseEnter={() => { setHoverKey(segKey(s)); setHoverColor(colorForSeg(s)) }} onMouseLeave={() => setHoverKey(null)}
                   title={s.note ? `${title} — ${s.note}` : title}>
@@ -526,7 +527,7 @@ function BlockEditor({ seg, projects, onSave, onDelete, onCancel }: { seg: Seg; 
       ...seg, kind: isBreak ? 'break' : 'work', meeting: isMeeting,
       start: setTime(seg.start, from), end: setTime(seg.end, to),
       ticket: isBreak ? null : (ticket || null), note: note || null,
-      project: (isBreak || isMeeting) ? null : (project || null)
+      project: isBreak ? null : (project || null) // Meetings dürfen einem Kunden/Projekt zugeordnet werden
     })
   }
   return (
@@ -536,7 +537,7 @@ function BlockEditor({ seg, projects, onSave, onDelete, onCancel }: { seg: Seg; 
       <div className="grid2"><label>Von <input type="time" value={from} onChange={e => setFrom(e.target.value)} /></label><label>Bis <input type="time" value={to} onChange={e => setTo(e.target.value)} /></label></div>
       {type !== 'break' && <>
         <label>Ticket / Titel <input value={ticket} onChange={e => setTicket(e.target.value)} placeholder={type === 'meeting' ? 'z. B. Jumo Daily' : 'z. B. PROJ-123'} /></label>
-        {type === 'work' && projects.length > 0 && <label>Projekt (Farbe)
+        {projects.length > 0 && <label>{type === 'meeting' ? 'Kunde / Projekt' : 'Projekt (Farbe)'}
           <select value={project} onChange={e => setProject(e.target.value)}>
             <option value="">– keins –</option>
             {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}

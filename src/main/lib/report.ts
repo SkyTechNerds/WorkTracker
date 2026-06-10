@@ -122,7 +122,8 @@ export function buildMonthReport(year: number, month: number, nowMs: number, gra
       const dur = Math.max(0, s.end - s.start) / 1000
       if (s.kind === 'break') { dayBreak += dur; continue }
       dayWorked += dur
-      const proj = s.meeting ? 'Meetings' : (s.project || 'Ohne Projekt')
+      // Kunde/Projekt hat Vorrang – Meetings MIT Projekt werden dem Kunden zugerechnet (abrechenbar).
+      const proj = s.project || (s.meeting ? 'Meetings' : 'Ohne Projekt')
       const ticket = s.meeting ? (s.ticket || 'Meeting') : (s.ticket || UNASSIGNED)
       if (s.meeting) totalMeeting += dur
       const p = projects[proj] || (projects[proj] = { name: proj, seconds: 0, tickets: {} })

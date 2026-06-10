@@ -1,7 +1,7 @@
 // Kompakte Popup-Fenster: Arbeit/Pause-Abfrage bei Aktivierung + Meeting-Titel
 // nach spontanem Call. Eigener Render-Pfad (kein voller App-Chrome).
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Icon } from './icons'
 
 function clock(ms: number): string {
@@ -52,12 +52,15 @@ function MeetingPopup({ from, to, suggested }: { from: number; to: number; sugge
   const [title, setTitle] = useState(suggested)
   const [f, setF] = useState(clock(from))
   const [t, setT] = useState(clock(to))
-  const payload = () => ({ from: f, to: t })
+  const [project, setProject] = useState('')
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => { window.wt.getConfig().then((c: any) => setProjects(c?.projects || [])) }, [])
+  const payload = () => ({ from: f, to: t, project })
   const submit = () => window.wt.popupResult('meeting', title.trim() || 'Meeting', payload())
   return (
     <div className="popup">
       <h2>Meeting beendet</h2>
-      <p className="sub">{suggested ? 'Titel aus dem Kalender übernommen – prüfen/anpassen' : 'Zeitraum prüfen + Titel vergeben (optional)'}</p>
+      <p className="sub">{suggested ? 'Titel aus dem Kalender übernommen – prüfen/anpassen' : 'Zeitraum + Titel + Kunde prüfen'}</p>
       <div className="popup-times">
         <label>Von <input type="time" value={f} onChange={e => setF(e.target.value)} /></label>
         <label>Bis <input type="time" value={t} onChange={e => setT(e.target.value)} /></label>
@@ -66,6 +69,10 @@ function MeetingPopup({ from, to, suggested }: { from: number; to: number; sugge
         onFocus={e => e.target.select()}
         onChange={e => setTitle(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') submit() }} />
+      {projects.length > 0 && <select className="popup-project" value={project} onChange={e => setProject(e.target.value)}>
+        <option value="">– Kunde / Projekt (für Abrechnung) –</option>
+        {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+      </select>}
       <button className="link-danger" onClick={() => window.wt.popupResult('meeting', '__none__', payload())}>
         War kein Meeting – als normale Arbeitszeit zählen
       </button>
