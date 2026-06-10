@@ -56,7 +56,6 @@ export interface AppConfig {
   endDayOnSleep: boolean
   detectTeamsApi: boolean
   askMeetingTitle: boolean
-  meetingTitleFromCalendar: boolean
   launchAtLogin: boolean
   // Mitarbeiter-/Nutzername (erscheint im Monatsbericht + Dateiname)
   employeeName: string
@@ -140,7 +139,6 @@ export function defaultAiConfig(): AiConfig {
 export interface MqttPublishFlags {
   status: boolean
   inCall: boolean
-  callTitle: boolean
   workedToday: boolean
   breakToday: boolean
   overtimeBalance: boolean
@@ -190,7 +188,6 @@ export function defaultConfig(): AppConfig {
     endDayOnSleep: true,
     detectTeamsApi: false,
     askMeetingTitle: true,
-    meetingTitleFromCalendar: true,
     launchAtLogin: true,
     employeeName: '',
     targetHoursPerDay: 8,
@@ -218,7 +215,6 @@ export function defaultMqttConfig(): MqttConfig {
     publish: {
       status: true,
       inCall: true,
-      callTitle: true,
       workedToday: true,
       breakToday: false,
       overtimeBalance: true,

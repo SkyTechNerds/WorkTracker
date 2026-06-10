@@ -5,7 +5,6 @@ import path from 'node:path'
 import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegments, resetToAuto, setDayEnded, clearDayEnded, isDayEnded, dayKey } from './lib/store'
 import { Tracker } from './lib/tracker'
 import { TeamsClient } from './lib/teams'
-import { currentMeetingTitle } from './lib/calendar'
 import { segments as deriveDay } from './lib/day'
 import { gitEmails } from './lib/git'
 import { checkForUpdate } from './lib/updater'
@@ -147,7 +146,6 @@ function applyApiServer() {
 }
 
 let callStart: number | null = null          // Beginn des laufenden Calls
-let callTitle: string | null = null          // aus dem Kalender gelesener Titel des laufenden Calls
 let pendingMeeting: { start: number; end: number } | null = null
 let lastPromptDay = ''
 
@@ -217,7 +215,6 @@ function buildSnapshot(): WTSnapshot {
   return {
     status: tracker.displayStatus,
     inCall: tracker.inCall,
-    callTitle: tracker.inCall ? (tracker.callLabel ?? 'Meeting') : '',
     workedTodayHours: today.workedSeconds / 3600,
     breakTodayMinutes: today.breakSeconds / 60,
     overtimeHours: ot.balanceHours,
@@ -324,7 +321,7 @@ function refreshTray() {
     { label: statusLabel, enabled: false },
     { label: `Gearbeitet: ${fmt(worked)}`, enabled: false },
     { label: `Pause: ${fmt(paused)}`, enabled: false },
-    ...(tracker.inCall ? [{ label: `Im Call: ${tracker.callLabel ?? 'Meeting'}`, enabled: false }] : []),
+    ...(tracker.inCall ? [{ label: 'Im Call', enabled: false }] : []),
     { type: 'separator' },
     { label: 'Arbeiten', enabled: ds !== 'Arbeit', click: () => resumeDay() },
     { label: 'Pause', enabled: ds === 'Arbeit', click: () => { tracker.pauseWork(); refreshTray() } },
@@ -358,7 +355,7 @@ function setupIpc() {
   ipcMain.handle('save-segments', (_e, dateMs: number, segs) => { saveSegments(dateMs, segs); return true })
   ipcMain.handle('is-materialized', (_e, dateMs: number) => isMaterialized(dateMs))
   ipcMain.handle('reset-day', (_e, dateMs: number) => { resetToAuto(dateMs); return true })
-  ipcMain.handle('status', () => ({ status: tracker.status, display: tracker.displayStatus, inCall: tracker.inCall, callLabel: tracker.callLabel, teamsStatus: teams.status }))
+  ipcMain.handle('status', () => ({ status: tracker.status, display: tracker.displayStatus, inCall: tracker.inCall, teamsStatus: teams.status }))
 
   ipcMain.handle('feierabend', () => { endDay(); return true })
   ipcMain.handle('resume-work', () => { resumeDay(); return true })
@@ -491,26 +488,13 @@ app.whenReady().then(() => {
     tracker.setMeeting(inMeeting ? 'Meeting' : null)
     if (inMeeting) {
       callStart = Date.now()
-      callTitle = null
-      // Geplanter Termin? Titel im Hintergrund aus dem Kalender holen (Apple, sonst Outlook)
-      // und live übernehmen (Tray, laufender Block, Samples) – Popup wird damit vorausgefüllt.
-      if (config.meetingTitleFromCalendar !== false) {
-        currentMeetingTitle().then(t => {
-          if (t && callStart && tracker.inCall) {
-            callTitle = t
-            tracker.setMeeting(t)
-            refreshTray(); win?.webContents.send('tick')
-          }
-        }).catch(() => { /* still */ })
-      }
     } else if (callStart) {
       const start = callStart, end = Date.now()
       callStart = null
       if (config.askMeetingTitle && end - start > 60_000) {
         pendingMeeting = { start, end }
-        openPopup('meeting', { from: String(start), to: String(end), title: callTitle || '' })
+        openPopup('meeting', { from: String(start), to: String(end), title: '' }) // Titel wird manuell gesetzt
       }
-      callTitle = null
     }
     refreshTray()
   })

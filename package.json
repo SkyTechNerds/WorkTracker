@@ -44,9 +44,7 @@
       "icon": "build/icon.icns",
       "identity": null,
       "extendInfo": {
-        "LSUIElement": true,
-        "NSAppleEventsUsageDescription": "WorkTracker liest den Titel eines gerade laufenden Termins aus Kalender bzw. Outlook, um Calls automatisch zu benennen.",
-        "NSCalendarsUsageDescription": "WorkTracker liest laufende Termine, um Calls automatisch mit dem Meeting-Titel zu versehen."
+        "LSUIElement": true
       }
     },
     "dmg": {

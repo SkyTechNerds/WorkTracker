@@ -8,7 +8,6 @@ import { MqttConfig, MqttPublishFlags } from './types'
 export interface WTSnapshot {
   status: string            // 'Arbeit' | 'Pause' | 'Feierabend' | 'Bereit'
   inCall: boolean
-  callTitle: string
   workedTodayHours: number
   breakTodayMinutes: number
   overtimeHours: number
@@ -30,7 +29,6 @@ interface FieldDef {
 const FIELDS: FieldDef[] = [
   { flag: 'status', topic: 'status', component: 'sensor', name: 'Status', icon: 'mdi:account-clock', value: s => s.status },
   { flag: 'inCall', topic: 'in_call', component: 'binary_sensor', name: 'Im Call', icon: 'mdi:phone-in-talk', value: s => (s.inCall ? 'ON' : 'OFF') },
-  { flag: 'callTitle', topic: 'call_title', component: 'sensor', name: 'Call-Titel', icon: 'mdi:phone', value: s => s.callTitle || '' },
   { flag: 'workedToday', topic: 'worked_today', component: 'sensor', name: 'Gearbeitet heute', unit: 'h', deviceClass: 'duration', icon: 'mdi:briefcase', value: s => s.workedTodayHours.toFixed(2) },
   { flag: 'breakToday', topic: 'break_today', component: 'sensor', name: 'Pause heute', unit: 'min', deviceClass: 'duration', icon: 'mdi:coffee', value: s => String(Math.round(s.breakTodayMinutes)) },
   { flag: 'overtimeBalance', topic: 'overtime', component: 'sensor', name: 'Überstunden-Saldo', unit: 'h', deviceClass: 'duration', icon: 'mdi:scale-balance', value: s => s.overtimeHours.toFixed(2) },

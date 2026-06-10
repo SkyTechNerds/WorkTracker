@@ -58,7 +58,7 @@ interface Cfg {
   idleThresholdMinutes: number; sampleIntervalSeconds: number; breakCapMinutes: number
   workdayStartHour: number; workdayEndHour: number; roundingMinutes: number
   promptMode: 'off' | 'onceADay' | 'afterBreaks' | 'everyUnlock'; promptAfterBreakMinutes: number
-  endDayOnSleep: boolean; detectTeamsApi: boolean; askMeetingTitle: boolean; meetingTitleFromCalendar: boolean; launchAtLogin: boolean
+  endDayOnSleep: boolean; detectTeamsApi: boolean; askMeetingTitle: boolean; launchAtLogin: boolean
   employeeName: string
   targetHoursPerDay: number; workdayWeekdays: number[]; overtimeStartBalanceHours: number
   projects: Project[]
@@ -69,7 +69,7 @@ interface Cfg {
   report: ReportConfig
 }
 interface MqttPublishFlags {
-  status: boolean; inCall: boolean; callTitle: boolean; workedToday: boolean
+  status: boolean; inCall: boolean; workedToday: boolean
   breakToday: boolean; overtimeBalance: boolean; workedWeek: boolean; currentTicket: boolean
 }
 interface MqttConfig {
@@ -100,14 +100,14 @@ const DEFAULT_CFG: Cfg = {
   idleThresholdMinutes: 6, sampleIntervalSeconds: 60, breakCapMinutes: 30,
   workdayStartHour: 6, workdayEndHour: 20, roundingMinutes: 15,
   promptMode: 'afterBreaks', promptAfterBreakMinutes: 20,
-  endDayOnSleep: true, detectTeamsApi: false, askMeetingTitle: true, meetingTitleFromCalendar: true, launchAtLogin: true,
+  endDayOnSleep: true, detectTeamsApi: false, askMeetingTitle: true, launchAtLogin: true,
   employeeName: '',
   targetHoursPerDay: 8, workdayWeekdays: [2, 3, 4, 5, 6], overtimeStartBalanceHours: 0,
   projects: [],
   mqtt: {
     enabled: false, host: '', port: 1883, username: '', password: '',
     baseTopic: 'worktracker', retain: true, haDiscovery: true,
-    publish: { status: true, inCall: true, callTitle: true, workedToday: true, breakToday: false, overtimeBalance: true, workedWeek: true, currentTicket: false }
+    publish: { status: true, inCall: true, workedToday: true, breakToday: false, overtimeBalance: true, workedWeek: true, currentTicket: false }
   },
   ai: { enabled: false, provider: 'gemini', apiKey: '', model: 'gemini-2.5-flash' },
   apiServer: { enabled: false, port: 8787, token: '' },
@@ -394,7 +394,7 @@ function CalendarView() {
           <span className="metric"><Icon name="briefcase" /> <b>{hm(summary.workedSeconds)}</b></span>
           <span className="metric"><Icon name="coffee" /> {hm(summary.breakSeconds)}</span>
         </>}
-        {status?.inCall && <span className="metric"><Icon name="phone" /> {status.callLabel || 'Meeting'}</span>}
+        {status?.inCall && <span className="metric"><Icon name="phone" /> Im Call</span>}
         {isToday && <>
           <button className="ico" title="Arbeiten" disabled={status?.display === 'Arbeit'} onClick={async () => { await window.wt.resumeWork(); load() }}><Icon name="play" /></button>
           <button className="ico" title="Pause" disabled={status?.display !== 'Arbeit'} onClick={async () => { await window.wt.pauseWork(); load() }}><Icon name="pause" /></button>
@@ -796,9 +796,7 @@ function SettingsView() {
               <h3>Meetings</h3>
               {toggle('detectTeamsApi', 'Teams-Meetings automatisch erkennen')}
               {toggle('askMeetingTitle', 'Nach spontanem Call nach Titel fragen')}
-              {toggle('meetingTitleFromCalendar', 'Call-Titel automatisch aus dem Kalender lesen (Apple Kalender / Outlook)')}
               {cfg.detectTeamsApi && <p className="hint">Teams → Einstellungen → Datenschutz → Drittanbieter-API aktivieren.</p>}
-              {cfg.meetingTitleFromCalendar && <p className="hint">Beim ersten Mal nach Erlaubnis fragen (Systemeinstellungen → Datenschutz → Automatisierung).</p>}
             </section>
           )}
 
@@ -851,7 +849,6 @@ function SettingsView() {
 const MQTT_FIELDS: Array<[keyof MqttPublishFlags, string]> = [
   ['status', 'Status (Arbeit/Pause/Feierabend)'],
   ['inCall', 'Im Call'],
-  ['callTitle', 'Call-Titel'],
   ['workedToday', 'Gearbeitet heute'],
   ['breakToday', 'Pause heute'],
   ['overtimeBalance', 'Überstunden-Saldo'],
