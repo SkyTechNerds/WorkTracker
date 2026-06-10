@@ -57,11 +57,12 @@ sich manuell wie per API/KI nachpflegen.
 
 ### Teams-Meeting-Erkennung
 - Erkennt laufende Teams-Calls über die **lokale Drittanbieter-API** (WebSocket
-  `127.0.0.1:8124`). Nach spontanem Call optional Titel-Abfrage; „war kein Meeting" zählt
-  als normale Arbeit. Hinweis, falls die Teams-API nicht erreichbar ist.
+  `127.0.0.1:8124`). Nach spontanem Call optional Abfrage von **Titel + Kunde/Projekt**
+  (manuell, für die Abrechnung); „war kein Meeting" zählt als normale Arbeit. Hinweis,
+  falls die Teams-API nicht erreichbar ist.
 
 ### MQTT / Home Assistant
-- Sendet **Status, Im-Call, Call-Titel, Gearbeitet heute/Woche, Pause, Überstunden,
+- Sendet **Status, Im-Call, Gearbeitet heute/Woche, Pause, Überstunden,
   aktuelles Ticket** an einen beliebigen MQTT-Broker.
 - Optionale **Home-Assistant-Discovery** (legt Entities automatisch an), Availability/LWT,
   pro Wert einzeln aktivierbar, Verbindungstest.
