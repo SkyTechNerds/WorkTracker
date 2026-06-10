@@ -90,7 +90,8 @@ function generateMonthReport(year: number, month: number): string | null {
   const folder = reportsFolder()
   try {
     fs.mkdirSync(folder, { recursive: true })
-    const base = `worktracker-monatsbericht-${rep.key}`
+    const slug = (config.employeeName || '').trim().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()
+    const base = `monatsbericht-${rep.key}${slug ? '-' + slug : ''}`
     const htmlPath = path.join(folder, base + '.html')
     fs.writeFileSync(htmlPath, rep.html)
     fs.writeFileSync(path.join(folder, base + '.csv'), rep.csv)

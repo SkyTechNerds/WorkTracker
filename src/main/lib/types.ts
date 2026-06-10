@@ -58,6 +58,8 @@ export interface AppConfig {
   askMeetingTitle: boolean
   meetingTitleFromCalendar: boolean
   launchAtLogin: boolean
+  // Mitarbeiter-/Nutzername (erscheint im Monatsbericht + Dateiname)
+  employeeName: string
   // Überstunden
   targetHoursPerDay: number
   workdayWeekdays: number[] // 1=So..7=Sa
@@ -189,6 +191,7 @@ export function defaultConfig(): AppConfig {
     askMeetingTitle: true,
     meetingTitleFromCalendar: true,
     launchAtLogin: true,
+    employeeName: '',
     targetHoursPerDay: 8,
     workdayWeekdays: [2, 3, 4, 5, 6],
     overtimeStartBalanceHours: 0,

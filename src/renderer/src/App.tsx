@@ -59,6 +59,7 @@ interface Cfg {
   workdayStartHour: number; workdayEndHour: number; roundingMinutes: number
   promptMode: 'off' | 'onceADay' | 'afterBreaks' | 'everyUnlock'; promptAfterBreakMinutes: number
   endDayOnSleep: boolean; detectTeamsApi: boolean; askMeetingTitle: boolean; meetingTitleFromCalendar: boolean; launchAtLogin: boolean
+  employeeName: string
   targetHoursPerDay: number; workdayWeekdays: number[]; overtimeStartBalanceHours: number
   projects: Project[]
   mqtt: MqttConfig
@@ -100,6 +101,7 @@ const DEFAULT_CFG: Cfg = {
   workdayStartHour: 6, workdayEndHour: 20, roundingMinutes: 15,
   promptMode: 'afterBreaks', promptAfterBreakMinutes: 20,
   endDayOnSleep: true, detectTeamsApi: false, askMeetingTitle: true, meetingTitleFromCalendar: true, launchAtLogin: true,
+  employeeName: '',
   targetHoursPerDay: 8, workdayWeekdays: [2, 3, 4, 5, 6], overtimeStartBalanceHours: 0,
   projects: [],
   mqtt: {
@@ -816,7 +818,7 @@ function SettingsView() {
                 </div>
               </div>
             </section>
-            <ReportSection report={cfg.report} onChange={r => set('report', r)} />
+            <ReportSection report={cfg.report} onChange={r => set('report', r)} employeeName={cfg.employeeName} onName={v => set('employeeName', v)} />
           </>)}
 
           {tab === 'display' && (
@@ -952,7 +954,7 @@ function AiSection({ ai, onChange }: { ai: AiConfig; onChange: (a: AiConfig) => 
   )
 }
 
-function ReportSection({ report, onChange }: { report: ReportConfig; onChange: (r: ReportConfig) => void }) {
+function ReportSection({ report, onChange, employeeName, onName }: { report: ReportConfig; onChange: (r: ReportConfig) => void; employeeName: string; onName: (v: string) => void }) {
   const [msg, setMsg] = useState('')
   const set = <K extends keyof ReportConfig>(k: K, v: ReportConfig[K]) => onChange({ ...report, [k]: v })
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 5000) }
@@ -963,6 +965,7 @@ function ReportSection({ report, onChange }: { report: ReportConfig; onChange: (
     <section>
       <h3>Monatsbericht (für Projektmanager)</h3>
       <p className="hint">Erstellt bei Monatswechsel automatisch einen Bericht des Vormonats (HTML + CSV): Aufwände gesamt, je Woche, je Projekt/Ticket und je Tag. Eine Benachrichtigung zeigt an, wo er liegt.</p>
+      <label className="row">Name / Mitarbeiter <input type="text" value={employeeName} placeholder="z. B. Christian Schimanski" onChange={e => onName(e.target.value)} /></label>
       <label className="row check"><input type="checkbox" checked={report.monthly} onChange={e => set('monthly', e.target.checked)} /> Monatsbericht automatisch erstellen</label>
       <div className="row">Zielordner
         <span style={{ display: 'flex', gap: 6, flex: 1 }}>

@@ -161,7 +161,8 @@ export function buildMonthReport(year: number, month: number, nowMs: number, gra
   h.push(`<style>
     :root{--ink:#1d1d1f;--mut:#6e6e73;--line:#e3e3e6;--accent:#2f6df6;--bg:#f5f5f7}
     *{box-sizing:border-box} body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);margin:0;padding:32px;background:#fff}
-    h1{font-size:24px;margin:0 0 4px} h2{font-size:16px;margin:28px 0 10px;border-bottom:2px solid var(--accent);padding-bottom:4px}
+    h1{font-size:24px;margin:0 0 2px} h2{font-size:16px;margin:28px 0 10px;border-bottom:2px solid var(--accent);padding-bottom:4px}
+    .who{font-size:16px;font-weight:600;margin:0 0 2px}
     .meta{color:var(--mut);margin-bottom:20px}
     .cards{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 4px}
     .card{background:var(--bg);border-radius:10px;padding:12px 16px;min-width:140px}
@@ -179,7 +180,9 @@ export function buildMonthReport(year: number, month: number, nowMs: number, gra
     .foot{color:var(--mut);font-size:12px;margin-top:28px}
     @media print{body{padding:0} .scrollx{overflow:visible}}
   </style></head><body>`)
+  const who = (config.employeeName || '').trim()
   h.push(`<h1>Monatsbericht – ${esc(monthLabel)}</h1>`)
+  if (who) h.push(`<div class="who">${esc(who)}</div>`)
   h.push(`<div class="meta">Erstellt am ${new Date(nowMs).toLocaleString('de-DE')} · WorkTracker</div>`)
   h.push(`<div class="cards">
     <div class="card"><b>${hm(totalWorked)}</b><span>Gesamt (${dec(totalWorked)} h)</span></div>
