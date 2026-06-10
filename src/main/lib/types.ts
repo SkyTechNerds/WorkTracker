@@ -76,13 +76,16 @@ export interface AppConfig {
 
 export interface BackupConfig {
   auto: boolean
-  intervalHours: number
+  onFeierabend: boolean   // Backup beim Feierabend (Tag abgeschlossen)
+  onNewDay: boolean       // Backup beim ersten Arbeitsstart eines neuen Tages
+  intervalHours: number   // zusätzlich zeitbasiert mit Nachhol-Logik (0 = aus)
   folder: string
   keep: number
+  lastBackupTs?: number   // intern: Zeitpunkt des letzten Auto-Backups
 }
 
 export function defaultBackupConfig(): BackupConfig {
-  return { auto: false, intervalHours: 24, folder: '', keep: 14 }
+  return { auto: false, onFeierabend: true, onNewDay: true, intervalHours: 24, folder: '', keep: 14 }
 }
 
 export interface ApiServerConfig {

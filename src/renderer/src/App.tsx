@@ -87,7 +87,7 @@ const AI_KEY_URL: Record<AiProvider, string> = {
 }
 const AI_PROVIDER_LABEL: Record<AiProvider, string> = { gemini: 'Google Gemini', openai: 'OpenAI', minimax: 'MiniMax' }
 interface ApiServerConfig { enabled: boolean; port: number; token: string }
-interface BackupConfig { auto: boolean; intervalHours: number; folder: string; keep: number }
+interface BackupConfig { auto: boolean; onFeierabend: boolean; onNewDay: boolean; intervalHours: number; folder: string; keep: number; lastBackupTs?: number }
 interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean; pending?: boolean }
 interface OvertimeResult { balanceHours: number; days: OvertimeDay[] }
 
@@ -105,7 +105,7 @@ const DEFAULT_CFG: Cfg = {
   },
   ai: { enabled: false, provider: 'gemini', apiKey: '', model: 'gemini-2.5-flash' },
   apiServer: { enabled: false, port: 8787, token: '' },
-  backup: { auto: false, intervalHours: 24, folder: '', keep: 14 }
+  backup: { auto: false, onFeierabend: true, onNewDay: true, intervalHours: 24, folder: '', keep: 14 }
 }
 
 function hm(seconds: number): string {
@@ -966,7 +966,10 @@ function BackupSection({ backup, onChange }: { backup: BackupConfig; onChange: (
       <h3 style={{ marginTop: 20 }}>Automatische Backups</h3>
       <label className="row check"><input type="checkbox" checked={backup.auto} onChange={e => set('auto', e.target.checked)} /> Automatisch sichern</label>
       {backup.auto && <>
-        <label className="row">Intervall (Stunden) <input type="number" min={1} value={backup.intervalHours} onChange={e => set('intervalHours', Number(e.target.value))} /></label>
+        <p className="hint">Wann gesichert wird – empfohlen sind die ereignisbasierten Auslöser, da sie zuverlässig greifen, während die App läuft:</p>
+        <label className="row check"><input type="checkbox" checked={backup.onFeierabend} onChange={e => set('onFeierabend', e.target.checked)} /> Bei Feierabend (Tag abgeschlossen)</label>
+        <label className="row check"><input type="checkbox" checked={backup.onNewDay} onChange={e => set('onNewDay', e.target.checked)} /> Beim Start eines neuen Arbeitstags</label>
+        <label className="row">Zusätzlich zeitbasiert alle (Stunden, 0 = aus) <input type="number" min={0} value={backup.intervalHours} onChange={e => set('intervalHours', Number(e.target.value))} /></label>
         <label className="row">Sicherungen behalten <input type="number" min={1} value={backup.keep} onChange={e => set('keep', Number(e.target.value))} /></label>
         <div className="row">Zielordner
           <span style={{ display: 'flex', gap: 6, flex: 1 }}>
@@ -977,7 +980,7 @@ function BackupSection({ backup, onChange }: { backup: BackupConfig; onChange: (
         <div className="row" style={{ justifyContent: 'flex-start' }}>
           <button className="add" onClick={backupNow} disabled={!backup.folder}>Jetzt sichern</button>
         </div>
-        <p className="hint">Nach „Speichern" greift das Intervall. Es werden die letzten {backup.keep} Sicherungen behalten, ältere automatisch gelöscht.</p>
+        <p className="hint">Das Zeit-Intervall hat eine Nachhol-Logik: War die App länger aus, wird beim nächsten Start gesichert, sobald genug Zeit vergangen ist. Es werden die letzten {backup.keep} Sicherungen behalten, ältere automatisch gelöscht.</p>
       </>}
       {msg && <p className="hint" style={{ color: msg.startsWith('✓') ? 'var(--pos)' : 'var(--neg)' }}>{msg}</p>}
     </section>

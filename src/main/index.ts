@@ -2,7 +2,7 @@
 
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, Notification, dialog, nativeTheme } from 'electron'
 import path from 'node:path'
-import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegments, resetToAuto, setDayEnded, clearDayEnded, isDayEnded } from './lib/store'
+import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegments, resetToAuto, setDayEnded, clearDayEnded, isDayEnded, dayKey } from './lib/store'
 import { Tracker } from './lib/tracker'
 import { TeamsClient } from './lib/teams'
 import { currentMeetingTitle } from './lib/calendar'
@@ -53,11 +53,27 @@ let apiServer: ApiServer
 let config: AppConfig
 
 let backupTimer: NodeJS.Timeout | undefined
+// Ein Auto-Backup ausführen + Zeitstempel merken. `force` überspringt den 2-Min-Doppelschutz.
+function runAutoBackup(force = false): { ok: boolean; file?: string; error?: string } {
+  if (!config.backup?.auto || !config.backup.folder) return { ok: false, error: 'Auto-Backup aus oder kein Ordner' }
+  if (!force && Date.now() - (config.backup.lastBackupTs || 0) < 2 * 60_000) return { ok: true }
+  const r = autoBackupTo(config.backup.folder, config.backup.keep)
+  if (r.ok) { config.backup.lastBackupTs = Date.now(); saveConfig(config) }
+  return r
+}
+// Zeitbasiert MIT Nachhol-Logik: nur sichern, wenn seit dem letzten Backup das
+// Intervall verstrichen ist (fängt ab, dass die App/der Rechner zwischendurch aus war).
+function maybeTimeBackup() {
+  if (!config.backup?.auto || !config.backup.folder) return
+  const iv = config.backup.intervalHours
+  if (!iv || iv <= 0) return
+  if (Date.now() - (config.backup.lastBackupTs || 0) >= iv * 3600_000) runAutoBackup(true)
+}
 function applyBackupTimer() {
   if (backupTimer) { clearInterval(backupTimer); backupTimer = undefined }
   if (config.backup?.auto && config.backup.folder) {
-    const ms = Math.max(1, config.backup.intervalHours) * 3600_000
-    backupTimer = setInterval(() => autoBackupTo(config.backup.folder, config.backup.keep), ms)
+    maybeTimeBackup() // sofortiger Nachhol-Check (z. B. App war >24h aus)
+    backupTimer = setInterval(maybeTimeBackup, 3600_000) // stündlich prüfen
   }
 }
 
@@ -160,6 +176,7 @@ function endDay() {
   saveSegments(d, deriveDay(d, Date.now(), graceSeconds())) // aktuellen Stand fixieren (inkl. Live-Teil bis jetzt)
   setDayEnded(d)
   refreshTray(); win?.webContents.send('tick'); publishMqtt()
+  if (config.backup?.onFeierabend) runAutoBackup(true) // Tag abgeschlossen -> sichern
 }
 
 /** Arbeit fortsetzen: Feierabend-Marker entfernen, Live-Erfassung wieder an. */
@@ -336,7 +353,11 @@ function setupIpc() {
       return { ok: true }
     } catch (e: any) { return { ok: false, error: String(e?.message || e) } }
   })
-  ipcMain.handle('backup-now', () => autoBackupTo(config.backup.folder, config.backup.keep))
+  ipcMain.handle('backup-now', () => {
+    const r = autoBackupTo(config.backup.folder, config.backup.keep)
+    if (r.ok) { config.backup.lastBackupTs = Date.now(); saveConfig(config) }
+    return r
+  })
   ipcMain.handle('ai-assign-day', async (_e, dateMs: number) => {
     const segs = deriveDay(dateMs, Date.now(), graceSeconds())
     const dayStart = startOfDay(dateMs)
@@ -418,6 +439,12 @@ app.whenReady().then(() => {
   })
   tracker.on('activated', ({ reason, breakSeconds }: { reason: string; breakSeconds: number }) => {
     maybePrompt(reason, breakSeconds)
+    // Neuer Arbeitstag begonnen (erster Arbeitsstart an einem Tag, an dem noch nicht
+    // gesichert wurde) -> den letzten abgeschlossenen Tag sichern.
+    if (config.backup?.auto && config.backup.onNewDay && config.backup.folder
+      && dayKey(Date.now()) !== (config.backup.lastBackupTs ? dayKey(config.backup.lastBackupTs) : '')) {
+      runAutoBackup(true)
+    }
   })
   teams.on('unreachable', () => {
     notify('Teams-API nicht erreichbar',
