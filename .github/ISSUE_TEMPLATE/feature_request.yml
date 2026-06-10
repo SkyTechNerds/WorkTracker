@@ -1,0 +1,64 @@
+name: 💡 Feature vorschlagen
+description: Eine Idee oder Verbesserung
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für die Idee! Am meisten hilft uns zu verstehen, **warum** etwas nützlich wäre – nicht nur, was gebaut werden soll.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Welches Problem löst es?
+      description: Was nervt aktuell, was fehlt, was ist umständlich? Beschreibe das Bedürfnis, nicht (nur) die Lösung.
+      placeholder: 'z. B. "Ich sehe nicht auf einen Blick, wie viel ich diese Woche schon gearbeitet habe."'
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Vorgeschlagene Lösung
+      description: Wie stellst du dir das vor? Gern konkret (wo in der App, wie bedient).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativen / heutiger Workaround
+      description: Wie behilfst du dir aktuell? Gibt es andere denkbare Lösungen?
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Bereich
+      options:
+        - Kalender / Einträge
+        - Zeiterfassung (aktiv / Pause / Feierabend)
+        - Meetings / Call-Erkennung
+        - Überstunden
+        - MQTT / Home Assistant
+        - Backup / Wiederherstellung
+        - API
+        - KI / Ticket-Zuordnung
+        - Sonstiges
+    validations:
+      required: true
+  - type: dropdown
+    id: importance
+    attributes:
+      label: Wie wichtig ist es dir?
+      options:
+        - Nice to have
+        - Würde meinen Alltag spürbar verbessern
+        - Blockiert mich aktuell
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Zusätzlicher Kontext
+      description: Optional – Mockups, Screenshots, Beispiele anderer Tools, …
+    validations:
+      required: false

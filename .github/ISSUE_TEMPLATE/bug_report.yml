@@ -1,0 +1,87 @@
+name: 🐞 Fehler melden
+description: Etwas funktioniert nicht wie erwartet
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke fürs Melden! Je konkreter die Angaben, desto schneller können wir den Fehler finden und beheben.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Was ist passiert?
+      description: Beschreibe den Fehler kurz und klar.
+      placeholder: 'z. B. "Beim Löschen einer Pause entsteht eine Lücke zwischen zwei Arbeitsblöcken."'
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zum Reproduzieren
+      description: Wie können wir den Fehler nachstellen? So genau wie möglich.
+      placeholder: |
+        1. Kalender öffnen
+        2. Pause per 🗑️ löschen
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Erwartetes Verhalten
+      description: Was hättest du stattdessen erwartet?
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Bereich
+      description: Wo tritt der Fehler auf?
+      options:
+        - Kalender / Einträge
+        - Zeiterfassung (aktiv / Pause / Feierabend)
+        - Meetings / Call-Erkennung
+        - Überstunden
+        - MQTT / Home Assistant
+        - Backup / Wiederherstellung
+        - API
+        - KI / Ticket-Zuordnung
+        - Sonstiges
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Betriebssystem
+      options:
+        - macOS
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: WorkTracker-Version
+      description: Findest du in den Einstellungen ganz unten bzw. im „Über"-Bereich.
+      placeholder: 'z. B. 0.2.4'
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Wie oft tritt es auf?
+      options:
+        - Immer (jedes Mal reproduzierbar)
+        - Häufig
+        - Selten / sporadisch
+        - Nur einmal gesehen
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots / Logs / Kontext
+      description: Optional – Screenshots, Fehlermeldungen oder weitere Hinweise. Bilder einfach reinziehen.
+    validations:
+      required: false
