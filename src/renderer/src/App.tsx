@@ -445,7 +445,7 @@ function CalendarView() {
         </div>
 
         <div className="sidebar">
-          <h3>Zeit je Ticket</h3>
+          <h3>Erfasste Zeiten</h3>
           {ticketGroups.length === 0 && <div className="ticket-row">keine Arbeitszeit</div>}
           {ticketGroups.map(g => (
             <div key={g.key} className="ticket-group">
