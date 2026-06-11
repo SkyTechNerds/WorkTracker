@@ -96,6 +96,7 @@ export class Tracker extends EventEmitter {
   /** Feierabend: Tag beenden, bis zum nächsten Tag oder „Arbeit fortsetzen". */
   feierabend(reason = 'feierabend') {
     this.manualOff = true
+    this.manualPause = false   // Pause-Hold ist mit Feierabend hinfällig (z. B. Standby-Pfad)
     this.offDayKey = this.dayKey()
     if (this.currentlyActive) {
       this.currentlyActive = false
@@ -157,7 +158,11 @@ export class Tracker extends EventEmitter {
 
     const threshold = Math.max(1, this.config.idleThresholdMinutes) * 60
     const idle = this.idleSeconds()
-    const desired = !this.manualOff && !this.manualPause && !this.screenLocked && (idle < threshold || this.inCall)
+    // Beim Entsperren/Aufwachen ist der User definitiv präsent – die System-Idle-Zeit
+    // ist da oft noch veraltet (zählt die Sperrzeit mit). Daher als anwesend werten,
+    // damit Arbeit aktiviert wird und das „Arbeit/Pause/Privat"-Popup erscheint.
+    const present = idle < threshold || this.inCall || reason === 'unlock'
+    const desired = !this.manualOff && !this.manualPause && !this.screenLocked && present
 
     if (desired === this.currentlyActive) {
       this.status = this.currentlyActive ? 'active' : (this.status === 'off' ? 'off' : 'paused')
