@@ -333,8 +333,19 @@ function CalendarView() {
   }
 
   // ---- Render ----
-  const { workdayStartHour: sh, workdayEndHour: eh } = cfg
-  const yOff = (ms: number) => { const d = new Date(ms); return ((d.getHours() * 60 + d.getMinutes()) - sh * 60) / 60 * HOUR_H }
+  const dayStart = (() => { const d = new Date(dateMs); d.setHours(0, 0, 0, 0); return d.getTime() })()
+  // Stundenbereich an die Einträge anpassen: mind. der konfigurierte Bereich, aber bei
+  // frühen/späten (auch über Mitternacht reichenden) Einträgen entsprechend erweitert.
+  let sh = cfg.workdayStartHour, eh = cfg.workdayEndHour
+  if (segments.length) {
+    const startsH = Math.min(...segments.map(s => (s.start - dayStart) / 3600000))
+    const endsH = Math.max(...segments.map(s => (s.end - dayStart) / 3600000))
+    sh = Math.max(0, Math.min(sh, Math.floor(startsH)))
+    eh = Math.min(28, Math.max(eh, Math.ceil(endsH)))
+  }
+  if (eh <= sh) eh = sh + 1
+  // tagesrelativ (nicht getHours) -> Einträge über Mitternacht werden korrekt platziert.
+  const yOff = (ms: number) => ((ms - dayStart) / 3600000 - sh) * HOUR_H
   const projColor = (name?: string | null) => name ? cfg.projects.find(p => p.name === name)?.color : undefined
   // Kategorie-Farbe eines Segments (deckungsgleich mit Block-Hintergrund + Gruppenfarbe).
   const colorForSeg = (s: Seg) => s.kind === 'break' ? 'var(--block-break)' : (projColor(s.project) || (s.meeting ? 'var(--block-meeting)' : 'var(--block-work)'))
@@ -420,7 +431,7 @@ function CalendarView() {
             {Array.from({ length: eh - sh + 1 }, (_, i) => sh + i).map(h => (
               <div key={h}>
                 <div className="hour-line" style={{ top: (h - sh) * HOUR_H }} />
-                <div className="hour-label" style={{ top: (h - sh) * HOUR_H }}>{String(h).padStart(2, '0')}:00</div>
+                <div className="hour-label" style={{ top: (h - sh) * HOUR_H }}>{String(h % 24).padStart(2, '0')}:00</div>
               </div>
             ))}
             {[...segments].sort((a, b) => a.start - b.start).map((s, i, arr) => {
@@ -523,9 +534,12 @@ function BlockEditor({ seg, projects, onSave, onDelete, onCancel }: { seg: Seg; 
   const [project, setProject] = useState(seg.project || '')
   const save = () => {
     const isBreak = type === 'break', isMeeting = type === 'meeting'
+    const start = setTime(seg.start, from)
+    let end = setTime(seg.end, to)
+    if (end <= start) end += 86400000 // Eintrag über Mitternacht (z. B. 21:30–00:30) -> Ende am Folgetag
     onSave({
       ...seg, kind: isBreak ? 'break' : 'work', meeting: isMeeting,
-      start: setTime(seg.start, from), end: setTime(seg.end, to),
+      start, end,
       ticket: isBreak ? null : (ticket || null), note: note || null,
       project: isBreak ? null : (project || null) // Meetings dürfen einem Kunden/Projekt zugeordnet werden
     })
