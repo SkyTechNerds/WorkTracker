@@ -6,7 +6,7 @@
 //   GET  /api/health
 //   GET  /api/projects
 //   GET  /api/day?date=YYYY-MM-DD
-//   POST /api/assign   { date, from:"HH:MM", to:"HH:MM", kind?, ticket?, note?, project?, meeting? }
+//   POST /api/assign   { date, from:"HH:MM", to:"HH:MM", kind?, ticket?, note?, project?, meeting? }  (to<=from = über Mitternacht)
 //   POST /api/day      { date, segments:[{from|start, to|end, kind?, ticket?, note?, project?, meeting?}] }
 //   POST /api/reset    { date }
 
@@ -138,8 +138,9 @@ export class ApiServer {
       if (req.method === 'POST' && url.pathname === '/api/assign') {
         const b = await this.body(req); if (!b) return this.send(res, 400, { error: 'ungültiges JSON' })
         const d = dayMs(b.date); if (d === null) return this.send(res, 400, { error: 'date=YYYY-MM-DD erforderlich' })
-        const a = hhmmToMs(d, b.from), z = hhmmToMs(d, b.to)
-        if (a === null || z === null || z <= a) return this.send(res, 400, { error: 'from/to als "HH:MM", to>from' })
+        const a = hhmmToMs(d, b.from); let z = hhmmToMs(d, b.to)
+        if (a === null || z === null) return this.send(res, 400, { error: 'from/to als "HH:MM" erforderlich' })
+        if (z <= a) z += 86400000 // Eintrag über Mitternacht (z. B. 21:30–00:30)
         const segs = applyRange(this.ctx.deriveDay(d), a, z, {
           kind: b.kind === 'break' ? 'break' : 'work', ticket: b.ticket ?? null,
           note: b.note ?? null, project: b.project ?? null, meeting: !!b.meeting
@@ -154,7 +155,9 @@ export class ApiServer {
         const segs: Segment[] = []
         for (const x of b.segments) {
           const start = typeof x.start === 'number' ? x.start : hhmmToMs(d, x.from)
-          const end = typeof x.end === 'number' ? x.end : hhmmToMs(d, x.to)
+          let end = typeof x.end === 'number' ? x.end : hhmmToMs(d, x.to)
+          // Bei HH:MM-Angabe bedeutet Ende <= Start „über Mitternacht" -> Folgetag.
+          if (typeof x.end !== 'number' && end !== null && start !== null && end <= start) end += 86400000
           if (start === null || end === null || end <= start) continue
           segs.push({
             id: randomUUID(), start, end, kind: x.kind === 'break' ? 'break' : 'work',
