@@ -161,8 +161,10 @@ button, input, select, textarea { font-family: inherit; }
 
 /* Export-Menü */
 .export-wrap { position: relative; display: inline-flex; }
-.export-menu { position: absolute; top: calc(100% + 5px); right: 0; z-index: 50; display: flex; flex-direction: column; min-width: 160px; padding: 4px; background: var(--panel-strong); backdrop-filter: blur(30px) saturate(180%); border: 0.5px solid var(--line); border-radius: 9px; box-shadow: 0 10px 30px rgba(0,0,0,0.28); }
+.export-menu { position: absolute; top: calc(100% + 5px); right: 0; z-index: 50; display: flex; flex-direction: column; min-width: 200px; padding: 4px; background: var(--panel-strong); backdrop-filter: blur(30px) saturate(180%); border: 0.5px solid var(--line); border-radius: 9px; box-shadow: 0 10px 30px rgba(0,0,0,0.28); }
 .export-menu button { font: inherit; font-size: 13px; text-align: left; padding: 7px 10px; border: none; background: none; border-radius: 6px; cursor: pointer; color: var(--text); }
+.export-menu .export-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 7px 10px 3px; font-weight: 700; }
+.export-menu .export-head:first-child { padding-top: 3px; }
 .export-menu button:hover { background: var(--hover); }
 
 /* Modals */

@@ -16,6 +16,7 @@ const api = {
   gitEmails: (repoPath: string) => ipcRenderer.invoke('git-emails', repoPath),
   overtime: () => ipcRenderer.invoke('overtime'),
   exportDay: (dateMs: number, format: 'md' | 'csv') => ipcRenderer.invoke('export-day', dateMs, format),
+  exportHours: (gran: 'day' | 'week' | 'month') => ipcRenderer.invoke('export-hours', gran),
   checkUpdate: () => ipcRenderer.invoke('check-update'),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   appVersion: () => ipcRenderer.invoke('app-version'),

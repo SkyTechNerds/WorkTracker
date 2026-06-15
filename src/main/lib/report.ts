@@ -1,7 +1,7 @@
 // Tages-Report (Markdown/CSV) + Monatsbericht (HTML/CSV) für Projektmanager.
 
 import { Segment, AppConfig, UNASSIGNED } from './types'
-import { segments, ticketTotals } from './day'
+import { segments, ticketTotals, summary } from './day'
 
 function hm(seconds: number): string {
   const t = Math.round(seconds); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60)
@@ -326,6 +326,58 @@ ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px
   }
 
   return { year, month, key, html, csv: c.join('\n'), totalSeconds: totalWork, workDays: bookedDays }
+}
+
+// ---- Stunden-Übersicht (je Tag / Woche / Monat) ----
+export function hoursSummaryCsv(nowMs: number, graceSeconds: number, gran: 'day' | 'week' | 'month'): string {
+  const now = new Date(nowMs)
+  const hDec = (sec: number) => (sec / 3600).toFixed(2).replace('.', ',') // dt. Dezimalkomma für Excel
+  const hms = (sec: number) => { const t = Math.round(sec); return `${Math.floor(t / 3600)}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}` }
+  const cesc = (v: string) => /[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
+  const dayWorked = (fromY: number, fromM: number, fromD: number, toY: number, toM: number, toD: number) => {
+    const out: { ms: number; worked: number; brk: number }[] = []
+    const end = new Date(toY, toM, toD)
+    for (const d = new Date(fromY, fromM, fromD); d <= end; d.setDate(d.getDate() + 1)) {
+      const ms = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+      const s = summary(ms, nowMs, graceSeconds)
+      out.push({ ms, worked: s.workedSeconds, brk: s.breakSeconds })
+    }
+    return out
+  }
+
+  if (gran === 'day') {
+    const y = now.getFullYear(), m = now.getMonth(), last = new Date(y, m + 1, 0).getDate()
+    const rows = ['Datum;Wochentag;Woche;Gearbeitet (h);Gearbeitet (h:mm);Pause (h)']
+    let total = 0
+    for (const d of dayWorked(y, m, 1, y, m, last)) {
+      if (d.worked <= 0 && d.brk <= 0) continue
+      const dt = new Date(d.ms); total += d.worked
+      rows.push([dt.toLocaleDateString('sv-SE'), dt.toLocaleDateString('de-DE', { weekday: 'short' }), `KW ${isoWeek(dt)}`, hDec(d.worked), hms(d.worked), hDec(d.brk)].map(cesc).join(';'))
+    }
+    rows.push(`Summe;;;${hDec(total)};${hms(total)};`)
+    return rows.join('\n')
+  }
+
+  if (gran === 'week') {
+    const y = now.getFullYear()
+    const wk: Record<number, number> = {}
+    for (const d of dayWorked(y, 0, 1, y, 11, 31)) if (d.worked > 0) wk[isoWeek(new Date(d.ms))] = (wk[isoWeek(new Date(d.ms))] || 0) + d.worked
+    const rows = ['Woche;Gearbeitet (h);Gearbeitet (h:mm)']
+    let total = 0
+    for (const w of Object.keys(wk).map(Number).sort((a, b) => a - b)) { total += wk[w]; rows.push(`KW ${w};${hDec(wk[w])};${hms(wk[w])}`) }
+    rows.push(`Summe ${y};${hDec(total)};${hms(total)}`)
+    return rows.join('\n')
+  }
+
+  // month
+  const y = now.getFullYear()
+  const mo = new Array(12).fill(0)
+  for (const d of dayWorked(y, 0, 1, y, 11, 31)) mo[new Date(d.ms).getMonth()] += d.worked
+  const rows = ['Monat;Gearbeitet (h);Gearbeitet (h:mm)']
+  let total = 0
+  for (let i = 0; i < 12; i++) { total += mo[i]; rows.push(`${new Date(y, i, 1).toLocaleDateString('de-DE', { month: 'long' })};${hDec(mo[i])};${hms(mo[i])}`) }
+  rows.push(`Summe ${y};${hDec(total)};${hms(total)}`)
+  return rows.join('\n')
 }
 
 export function reportCsv(dateMs: number, nowMs: number, graceSeconds: number): string {

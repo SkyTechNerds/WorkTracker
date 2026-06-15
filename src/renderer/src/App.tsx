@@ -18,6 +18,7 @@ declare global {
       gitEmails: (repoPath: string) => Promise<string[]>
       overtime: () => Promise<OvertimeResult>
       exportDay: (dateMs: number, format: 'md' | 'csv') => Promise<boolean>
+      exportHours: (gran: 'day' | 'week' | 'month') => Promise<boolean>
       checkUpdate: () => Promise<any>
       openExternal: (url: string) => Promise<any>
       appVersion: () => Promise<string>
@@ -419,8 +420,13 @@ function CalendarView() {
         <span className="export-wrap" onClick={e => e.stopPropagation()}>
           <button className="ico" title="Exportieren" onClick={() => setExportOpen(v => !v)}><Icon name="download" /></button>
           {exportOpen && <div className="export-menu">
+            <div className="export-head">Dieser Tag</div>
             <button onClick={() => { window.wt.exportDay(dateMs, 'md'); setExportOpen(false) }}>Markdown (.md)</button>
             <button onClick={() => { window.wt.exportDay(dateMs, 'csv'); setExportOpen(false) }}>CSV (.csv)</button>
+            <div className="export-head">Stunden-Übersicht</div>
+            <button onClick={() => { window.wt.exportHours('day'); setExportOpen(false) }}>Je Tag – Monat (.csv)</button>
+            <button onClick={() => { window.wt.exportHours('week'); setExportOpen(false) }}>Je Woche – Jahr (.csv)</button>
+            <button onClick={() => { window.wt.exportHours('month'); setExportOpen(false) }}>Je Monat – Jahr (.csv)</button>
           </div>}
         </span>
       </div>

@@ -9,7 +9,7 @@ import { segments as deriveDay } from './lib/day'
 import { gitEmails } from './lib/git'
 import { checkForUpdate } from './lib/updater'
 import { computeOvertime, weekWorkedSeconds } from './lib/overtime'
-import { reportMarkdown, reportCsv, buildMonthReport } from './lib/report'
+import { reportMarkdown, reportCsv, buildMonthReport, hoursSummaryCsv } from './lib/report'
 import { MqttPublisher, WTSnapshot } from './lib/mqtt'
 import { assignTicketsForDay, testAi, listModels } from './lib/ai'
 import { ApiServer } from './lib/apiServer'
@@ -390,6 +390,15 @@ function setupIpc() {
       defaultPath: `worktracker-${day}.${format}`,
       filters: [format === 'csv' ? { name: 'CSV', extensions: ['csv'] } : { name: 'Markdown', extensions: ['md'] }]
     })
+    if (r.canceled || !r.filePath) return false
+    try { fs.writeFileSync(r.filePath, content); return true } catch { return false }
+  })
+  ipcMain.handle('export-hours', async (_e, gran: 'day' | 'week' | 'month') => {
+    const now = new Date()
+    const label = gran === 'day' ? `stunden-je-tag-${now.toLocaleDateString('sv-SE').slice(0, 7)}`
+      : gran === 'week' ? `stunden-je-woche-${now.getFullYear()}` : `stunden-je-monat-${now.getFullYear()}`
+    const content = hoursSummaryCsv(Date.now(), graceSeconds(), gran)
+    const r = await dialog.showSaveDialog({ defaultPath: `worktracker-${label}.csv`, filters: [{ name: 'CSV', extensions: ['csv'] }] })
     if (r.canceled || !r.filePath) return false
     try { fs.writeFileSync(r.filePath, content); return true } catch { return false }
   })
