@@ -82,6 +82,11 @@ interface DayData {
 export interface MonthReport { year: number; month: number; key: string; html: string; csv: string; totalSeconds: number; workDays: number }
 
 export function buildMonthReport(year: number, month: number, nowMs: number, graceSeconds: number, config: AppConfig): MonthReport {
+  return buildReport(new Date(year, month, 1).getTime(), new Date(year, month + 1, 0).getTime(), nowMs, graceSeconds, config)
+}
+
+// Generischer Bericht über einen beliebigen Zeitraum [fromMs, toMs] (Tag/Woche/Monat/Jahr/frei).
+export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSeconds: number, config: AppConfig): MonthReport {
   const TARGET = (config.targetHoursPerDay || 8) * 3600
   const workdays = config.workdayWeekdays || [2, 3, 4, 5, 6] // 1=So..7=Sa
   const isWorkday = (d: Date) => workdays.includes(d.getDay() + 1)
@@ -94,10 +99,12 @@ export function buildMonthReport(year: number, month: number, nowMs: number, gra
     return PALETTE[idx % PALETTE.length]
   }
 
-  const first = new Date(year, month, 1)
-  const last = new Date(year, month + 1, 0)
+  const first = (() => { const d = new Date(fromMs); d.setHours(0, 0, 0, 0); return d })()
+  const last = (() => { const d = new Date(toMs); d.setHours(0, 0, 0, 0); return d })()
   const todayStart = new Date(nowMs); todayStart.setHours(0, 0, 0, 0)
   const cutoff = Math.min(last.getTime(), todayStart.getTime())
+  const rangeDays = Math.round((last.getTime() - first.getTime()) / 86400000) + 1
+  const showCalendar = rangeDays <= 45 // Kalenderraster nur für überschaubare Zeiträume (Tag/Woche/Monat)
 
   const days: DayData[] = []
   const projAgg: Record<string, { name: string; seconds: number; tickets: Record<string, number>; color: string }> = {}
@@ -156,22 +163,31 @@ export function buildMonthReport(year: number, month: number, nowMs: number, gra
   }
   const weekList = Object.values(weeks).sort((a, b) => a.week - b.week)
 
-  const monthLabel = first.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
-  const key = `${year}-${String(month + 1).padStart(2, '0')}`
+  // Zeitraum-Label/Typ ableiten (Tag / Woche / Monat / Jahr / freier Bereich).
+  const sameDay = first.getTime() === last.getTime()
+  const dStr = (d: Date) => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const isFullMonth = first.getDate() === 1 && first.getFullYear() === last.getFullYear() && first.getMonth() === last.getMonth() && last.getDate() === new Date(last.getFullYear(), last.getMonth() + 1, 0).getDate()
+  const isFullYear = first.getMonth() === 0 && first.getDate() === 1 && last.getMonth() === 11 && last.getDate() === 31 && first.getFullYear() === last.getFullYear()
+  const isWeek = rangeDays === 7 && first.getDay() === 1
+  let periodKind: string, monthLabel: string, key: string
+  if (sameDay) { periodKind = 'Tagesbericht'; monthLabel = first.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }); key = first.toLocaleDateString('sv-SE') }
+  else if (isWeek) { periodKind = 'Wochenbericht'; monthLabel = `KW ${isoWeek(first)} (${dStr(first)} – ${dStr(last)})`; key = `${first.getFullYear()}-KW${String(isoWeek(first)).padStart(2, '0')}` }
+  else if (isFullMonth) { periodKind = 'Monatsbericht'; monthLabel = first.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }); key = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}` }
+  else if (isFullYear) { periodKind = 'Jahresbericht'; monthLabel = String(first.getFullYear()); key = String(first.getFullYear()) }
+  else { periodKind = 'Auswertung'; monthLabel = `${dStr(first)} – ${dStr(last)}`; key = `${first.toLocaleDateString('sv-SE')}_${last.toLocaleDateString('sv-SE')}` }
   const who = (config.employeeName || '').trim()
   const top = projList[0]
   const status = emptyWorkdays > 0 ? 'Prüfen' : 'Vollständig'
 
   // ---- Auffälligkeiten (regelbasiert) ----
   const insights: { t: string; p: string }[] = []
-  const isCurrentMonth = year === todayStart.getFullYear() && month === todayStart.getMonth()
-  if (isCurrentMonth) insights.push({ t: `Laufender Monat – Stand ${new Date(cutoff).toLocaleDateString('de-DE')}`, p: 'Tage nach dem Stichtag werden nicht als fehlend gewertet.' })
+  if (cutoff < last.getTime()) insights.push({ t: `Laufender Zeitraum – Stand ${new Date(cutoff).toLocaleDateString('de-DE')}`, p: 'Tage nach dem Stichtag werden nicht als fehlend gewertet.' })
   if (emptyWorkdays > 0) insights.push({ t: `${emptyWorkdays} planrelevante Tag(e) ohne Buchung`, p: 'Im Kalender als „keine Buchung" sichtbar – ggf. Urlaub/Krank oder fehlende Erfassung.' })
   const emptyWeeks = weekList.filter(w => w.booking === 0)
   if (emptyWeeks.length) insights.push({ t: `KW ${emptyWeeks.map(w => w.week).join(', ')} ohne Buchungen`, p: 'Ganze Woche(n) ohne erfasste Zeit.' })
   if (underDays > 0) insights.push({ t: `${underDays} Tag(e) unter ${hm(TARGET)} Soll`, p: 'Differenz bis zur 8h-Tagesreferenz = nicht gebuchte Sollzeit.' })
   if (totalWork > 0) insights.push({ t: `Meeting-Anteil ${pct(totalMeeting, totalWork)}`, p: `${hm(totalMeeting)} von ${hm(totalWork)} gebuchter Arbeit entfallen auf Meetings.` })
-  if (top) insights.push({ t: `Top-Projekt ${esc(top.name)} = ${pct(top.seconds, totalWork)}`, p: `${hm(top.seconds)} – größter Anteil des Monats.` })
+  if (top) insights.push({ t: `Top-Projekt ${esc(top.name)} = ${pct(top.seconds, totalWork)}`, p: `${hm(top.seconds)} – größter Anteil im Zeitraum.` })
 
   // ---- Helfer: gestapelter Tagesbalken ----
   const stack = (cats: Record<Cat, number>, open: number, denomBase: number) => {
@@ -221,7 +237,7 @@ export function buildMonthReport(year: number, month: number, nowMs: number, gra
   const projLegend = projList.map(p => `<span><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</span>`).join('')
 
   // ---- Tagesdetail-Tabelle ----
-  const detailRows = days.filter(d => !d.future).map(d => {
+  const detailRows = (showCalendar ? days.filter(d => !d.future) : days.filter(d => d.hasBooking)).map(d => {
     const dt = new Date(d.ms)
     const dname = dt.toLocaleDateString('de-DE', { weekday: 'long' }); const ddate = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     if (d.weekend) return `<tr><td><strong>${dname}</strong><small>${ddate}</small></td><td>Wochenende</td><td class="num">–</td><td class="num">–</td><td><span class="badge frei">frei</span></td></tr>`
@@ -231,7 +247,7 @@ export function buildMonthReport(year: number, month: number, nowMs: number, gra
     return `<tr><td><strong>${dname}</strong><small>${ddate}</small></td><td>${items}</td><td class="num">${hm(d.work)}</td><td class="num">${d.pause > 0 ? hm(d.pause) : '–'}</td><td>${badge}</td></tr>`
   }).join('')
 
-  const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Monatsbericht ${esc(monthLabel)}${who ? ' – ' + esc(who) : ''}</title>
+  const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(periodKind)} ${esc(monthLabel)}${who ? ' – ' + esc(who) : ''}</title>
 <style>
 :root{--bg:#f4f6f8;--paper:#fff;--ink:#172033;--muted:#667085;--line:#dce3eb;--work:${CAT.customer};--intern:${CAT.internal};--meetings:${CAT.meeting};--pause:${CAT.pause};--open:${CAT.open};--weekend:#f8fafc;--ok:#dcfce7;--warn:#fff7ed}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
@@ -278,8 +294,8 @@ ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px
 @media print{body{background:#fff}.page{max-width:none;padding:0}.hero,.section,.kpi{box-shadow:none}.calendar{min-width:0}}
 </style></head><body><div class="page">
 <header class="hero">
-  <div><div class="eyebrow">WorkTracker · Monatsauswertung · ${esc(status)}</div><h1>Monatsbericht ${esc(monthLabel)}</h1><p>Übersicht für Projektmanager: Auslastung, Tageslogik (8h-Referenz), Projektanteile, Tickets und nicht gebuchte Sollzeit in einer kompakten Report-Seite.</p></div>
-  <div class="report-meta"><div class="meta-card"><span>Mitarbeiter</span><b>${who ? esc(who) : '–'}</b></div><div class="meta-card"><span>Stand</span><b>${new Date(nowMs).toLocaleDateString('de-DE')}</b></div><div class="meta-card"><span>Monatstage</span><b>${last.getDate()} Tage</b></div><div class="meta-card"><span>Arbeitstage (Mo–Fr)</span><b>${weekdaysInMonth} Tage</b></div></div>
+  <div><div class="eyebrow">WorkTracker · Auswertung · ${esc(status)}</div><h1>${esc(periodKind)} ${esc(monthLabel)}</h1><p>Übersicht für Projektmanager: Auslastung, Tageslogik (8h-Referenz), Projektanteile, Tickets und nicht gebuchte Sollzeit in einer kompakten Report-Seite.</p></div>
+  <div class="report-meta"><div class="meta-card"><span>Mitarbeiter</span><b>${who ? esc(who) : '–'}</b></div><div class="meta-card"><span>Stand</span><b>${new Date(nowMs).toLocaleDateString('de-DE')}</b></div><div class="meta-card"><span>Tage im Zeitraum</span><b>${rangeDays}</b></div><div class="meta-card"><span>Arbeitstage (Mo–Fr)</span><b>${weekdaysInMonth} Tage</b></div></div>
 </header>
 <section class="kpis">
   <div class="kpi"><span>Gebuchte Arbeit</span><b>${hm(totalWork)}</b><small>ohne Pausen (${dec(totalWork)} h)</small></div>
@@ -289,8 +305,8 @@ ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px
   <div class="kpi"><span>Pausen</span><b>${hm(totalPause)}</b><small>nicht abrechenbar</small></div>
   <div class="kpi"><span>Nicht gebuchte Sollzeit</span><b>${hm(totalOpen)}</b><small>Rest bis ${hm(TARGET)} an gebuchten Tagen</small></div>
 </section>
-<section class="section">
-  <div class="section-head"><div><h2>Arbeitsverlauf nach Kalenderlogik</h2><p>Alle Monatstage sichtbar. Jeder gebuchte Arbeitstag nutzt ${hm(TARGET)} als Referenz: Kunde + Intern + Meeting + Pause + ggf. nicht gebuchte Sollzeit.</p></div>
+${showCalendar ? `<section class="section">
+  <div class="section-head"><div><h2>Arbeitsverlauf nach Kalenderlogik</h2><p>Alle Tage des Zeitraums sichtbar. Jeder gebuchte Arbeitstag nutzt ${hm(TARGET)} als Referenz: Kunde + Intern + Meeting + Pause + ggf. nicht gebuchte Sollzeit.</p></div>
   <div class="legend"><span><i class="swatch work"></i>Kundenprojekt</span><span><i class="swatch intern"></i>Intern</span><span><i class="swatch meetings"></i>Meeting</span><span><i class="swatch pause"></i>Pause</span><span><i class="swatch open"></i>nicht gebuchte Sollzeit</span><span><i class="swatch weekend"></i>Wochenende / keine Buchung</span></div></div>
   <div class="grid-2">
     <div class="calendar-scroll"><div class="calendar"><div class="weekday">Mo</div><div class="weekday">Di</div><div class="weekday">Mi</div><div class="weekday">Do</div><div class="weekday">Fr</div><div class="weekday">Sa</div><div class="weekday">So</div>${cells.join('')}</div></div>
@@ -300,8 +316,8 @@ ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px
       ${insights[0] ? `<div class="note"><h3>PM-Hinweis</h3><p><b>${esc(insights[0].t)}.</b> ${esc(insights[0].p)}</p></div>` : ''}
     </aside>
   </div>
-</section>
-<section class="section"><div class="section-head"><div><h2>Wochenvergleich</h2><p>Wöchentliche Verdichtung mit derselben Farblogik wie der Kalender. Wochen-Soll nur für Tage im Reportmonat.</p></div></div>
+</section>` : ''}
+<section class="section"><div class="section-head"><div><h2>Wochenvergleich</h2><p>Wöchentliche Verdichtung mit derselben Farblogik wie der Kalender. Wochen-Soll nur für Tage im Zeitraum.</p></div></div>
   <div class="table-wrap"><table><thead><tr><th>Woche</th><th>Füllstand</th><th class="num">Arbeit</th><th class="num">Pause</th><th class="num">Soll</th><th>Status</th></tr></thead><tbody>${weekRows}</tbody></table></div></section>
 <section class="section"><div class="section-head"><div><h2>Projekt- und Ticketanteile</h2><p>Verteilung nach Kunde/Projekt – inkl. Meetings, die einem Kunden zugeordnet sind (abrechenbar).</p></div><div class="legend">${projLegend}</div></div>
   <div class="projects">${projCards}</div></section>
@@ -309,7 +325,7 @@ ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px
   <div class="insights">${insights.map(i => `<article class="insight"><b>${esc(i.t)}</b><p>${esc(i.p)}</p></article>`).join('')}</div></section>
 <section class="section"><div class="section-head"><div><h2>Tagesdetails</h2><p>Exakte Prüfung einzelner Tage – Arbeit ohne Pause, Pause separat.</p></div></div>
   <div class="table-wrap"><table><thead><tr><th>Tag</th><th>Projekte / Tickets</th><th class="num">Arbeit</th><th class="num">Pause</th><th>Status</th></tr></thead><tbody>${detailRows}</tbody></table></div></section>
-<div class="footer">WorkTracker · Monatsbericht ${esc(monthLabel)}${who ? ' · ' + esc(who) : ''} · Ist-Aufwände, ${hm(TARGET)}-Tagesreferenz</div>
+<div class="footer">WorkTracker · ${esc(periodKind)} ${esc(monthLabel)}${who ? ' · ' + esc(who) : ''} · Ist-Aufwände, ${hm(TARGET)}-Tagesreferenz</div>
 </div></body></html>`
 
   // ---- CSV (eine Zeile je Tag × Projekt/Ticket) ----
@@ -325,59 +341,7 @@ ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px
     }
   }
 
-  return { year, month, key, html, csv: c.join('\n'), totalSeconds: totalWork, workDays: bookedDays }
-}
-
-// ---- Stunden-Übersicht (je Tag / Woche / Monat) ----
-export function hoursSummaryCsv(nowMs: number, graceSeconds: number, gran: 'day' | 'week' | 'month'): string {
-  const now = new Date(nowMs)
-  const hDec = (sec: number) => (sec / 3600).toFixed(2).replace('.', ',') // dt. Dezimalkomma für Excel
-  const hms = (sec: number) => { const t = Math.round(sec); return `${Math.floor(t / 3600)}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}` }
-  const cesc = (v: string) => /[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
-  const dayWorked = (fromY: number, fromM: number, fromD: number, toY: number, toM: number, toD: number) => {
-    const out: { ms: number; worked: number; brk: number }[] = []
-    const end = new Date(toY, toM, toD)
-    for (const d = new Date(fromY, fromM, fromD); d <= end; d.setDate(d.getDate() + 1)) {
-      const ms = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-      const s = summary(ms, nowMs, graceSeconds)
-      out.push({ ms, worked: s.workedSeconds, brk: s.breakSeconds })
-    }
-    return out
-  }
-
-  if (gran === 'day') {
-    const y = now.getFullYear(), m = now.getMonth(), last = new Date(y, m + 1, 0).getDate()
-    const rows = ['Datum;Wochentag;Woche;Gearbeitet (h);Gearbeitet (h:mm);Pause (h)']
-    let total = 0
-    for (const d of dayWorked(y, m, 1, y, m, last)) {
-      if (d.worked <= 0 && d.brk <= 0) continue
-      const dt = new Date(d.ms); total += d.worked
-      rows.push([dt.toLocaleDateString('sv-SE'), dt.toLocaleDateString('de-DE', { weekday: 'short' }), `KW ${isoWeek(dt)}`, hDec(d.worked), hms(d.worked), hDec(d.brk)].map(cesc).join(';'))
-    }
-    rows.push(`Summe;;;${hDec(total)};${hms(total)};`)
-    return rows.join('\n')
-  }
-
-  if (gran === 'week') {
-    const y = now.getFullYear()
-    const wk: Record<number, number> = {}
-    for (const d of dayWorked(y, 0, 1, y, 11, 31)) if (d.worked > 0) wk[isoWeek(new Date(d.ms))] = (wk[isoWeek(new Date(d.ms))] || 0) + d.worked
-    const rows = ['Woche;Gearbeitet (h);Gearbeitet (h:mm)']
-    let total = 0
-    for (const w of Object.keys(wk).map(Number).sort((a, b) => a - b)) { total += wk[w]; rows.push(`KW ${w};${hDec(wk[w])};${hms(wk[w])}`) }
-    rows.push(`Summe ${y};${hDec(total)};${hms(total)}`)
-    return rows.join('\n')
-  }
-
-  // month
-  const y = now.getFullYear()
-  const mo = new Array(12).fill(0)
-  for (const d of dayWorked(y, 0, 1, y, 11, 31)) mo[new Date(d.ms).getMonth()] += d.worked
-  const rows = ['Monat;Gearbeitet (h);Gearbeitet (h:mm)']
-  let total = 0
-  for (let i = 0; i < 12; i++) { total += mo[i]; rows.push(`${new Date(y, i, 1).toLocaleDateString('de-DE', { month: 'long' })};${hDec(mo[i])};${hms(mo[i])}`) }
-  rows.push(`Summe ${y};${hDec(total)};${hms(total)}`)
-  return rows.join('\n')
+  return { year: first.getFullYear(), month: first.getMonth(), key, html, csv: c.join('\n'), totalSeconds: totalWork, workDays: bookedDays }
 }
 
 export function reportCsv(dateMs: number, nowMs: number, graceSeconds: number): string {

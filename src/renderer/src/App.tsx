@@ -18,7 +18,7 @@ declare global {
       gitEmails: (repoPath: string) => Promise<string[]>
       overtime: () => Promise<OvertimeResult>
       exportDay: (dateMs: number, format: 'md' | 'csv') => Promise<boolean>
-      exportHours: (gran: 'day' | 'week' | 'month') => Promise<boolean>
+      exportReport: (from: string, to: string) => Promise<{ ok: boolean; file?: string; folder?: string; error?: string }>
       checkUpdate: () => Promise<any>
       openExternal: (url: string) => Promise<any>
       appVersion: () => Promise<string>
@@ -165,6 +165,7 @@ function CalendarView() {
   const [editing, setEditing] = useState<Seg | null>(null)
   const [assignKey, setAssignKey] = useState<string | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
   const [rangeOpen, setRangeOpen] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMsg, setAiMsg] = useState('')
@@ -423,10 +424,8 @@ function CalendarView() {
             <div className="export-head">Dieser Tag</div>
             <button onClick={() => { window.wt.exportDay(dateMs, 'md'); setExportOpen(false) }}>Markdown (.md)</button>
             <button onClick={() => { window.wt.exportDay(dateMs, 'csv'); setExportOpen(false) }}>CSV (.csv)</button>
-            <div className="export-head">Stunden-Übersicht</div>
-            <button onClick={() => { window.wt.exportHours('day'); setExportOpen(false) }}>Je Tag – Monat (.csv)</button>
-            <button onClick={() => { window.wt.exportHours('week'); setExportOpen(false) }}>Je Woche – Jahr (.csv)</button>
-            <button onClick={() => { window.wt.exportHours('month'); setExportOpen(false) }}>Je Monat – Jahr (.csv)</button>
+            <div className="export-head">Auswertung</div>
+            <button onClick={() => { setReportOpen(true); setExportOpen(false) }}>Zeitraum wählen…</button>
           </div>}
         </span>
       </div>
@@ -513,6 +512,7 @@ function CalendarView() {
       </div>
 
       {editing && <BlockEditor seg={editing} projects={cfg.projects} onSave={saveEdit} onDelete={deleteSeg} onCancel={() => setEditing(null)} />}
+      {reportOpen && <ReportRange dateMs={dateMs} onClose={() => setReportOpen(false)} />}
       {assignKey && <TicketDetail group={assignKey} segments={segments} projects={cfg.projects}
         onAdd={(from, to, note, project) => assignRange(setTime(dateMs, from), setTime(dateMs, to), assignKey === UNASSIGNED ? '' : assignKey, note, project)}
         onDelete={(id) => persist(deleteFilling(id))}
@@ -677,6 +677,35 @@ function RangeAssign({ projects, defFrom, defTo, onSave, onCancel }: {
       <label>Beschreibung <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} /></label>
       <p className="hint">Pausen im Zeitraum bleiben Pausen (werden abgezogen). Mehrfach buchbar – z. B. erst 11:00–12:30, später 13:00–13:30 für dasselbe Ticket.</p>
       <div className="actions"><span style={{ flex: 1 }} /><button onClick={onCancel}>Abbrechen</button><button className="primary" onClick={() => onSave(ticket, note, project, from, to)}>Buchen</button></div>
+    </Modal>
+  )
+}
+
+function ReportRange({ dateMs, onClose }: { dateMs: number; onClose: () => void }) {
+  const iso = (ms: number) => new Date(ms).toLocaleDateString('sv-SE')
+  const [from, setFrom] = useState(iso(dateMs))
+  const [to, setTo] = useState(iso(dateMs))
+  const [msg, setMsg] = useState('')
+  const d = new Date(dateMs)
+  const setRange = (a: number, b: number) => { setFrom(iso(a)); setTo(iso(b)) }
+  const week = () => { const mo = new Date(dateMs); mo.setDate(mo.getDate() - ((mo.getDay() + 6) % 7)); const su = new Date(mo); su.setDate(mo.getDate() + 6); setRange(mo.getTime(), su.getTime()) }
+  const create = async () => {
+    setMsg('Erstelle…')
+    const r = await window.wt.exportReport(from, to)
+    if (r.ok) onClose(); else setMsg('✕ ' + (r.error || 'Fehler'))
+  }
+  return (
+    <Modal title="Auswertung erstellen" onCancel={onClose}>
+      <p className="hint">Schnellauswahl (ab dem angezeigten Tag) oder Zeitraum frei wählen – die Auswertung öffnet sich danach im Browser.</p>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+        <button onClick={() => setRange(dateMs, dateMs)}>Tag</button>
+        <button onClick={week}>Woche</button>
+        <button onClick={() => setRange(new Date(d.getFullYear(), d.getMonth(), 1).getTime(), new Date(d.getFullYear(), d.getMonth() + 1, 0).getTime())}>Monat</button>
+        <button onClick={() => setRange(new Date(d.getFullYear(), 0, 1).getTime(), new Date(d.getFullYear(), 11, 31).getTime())}>Jahr</button>
+      </div>
+      <div className="grid2"><label>Von <input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>Bis <input type="date" value={to} onChange={e => setTo(e.target.value)} /></label></div>
+      {msg && <p className="hint" style={{ color: msg.startsWith('✕') ? 'var(--neg)' : 'var(--muted)' }}>{msg}</p>}
+      <div className="actions"><span style={{ flex: 1 }} /><button onClick={onClose}>Abbrechen</button><button className="primary" onClick={create}>Auswertung öffnen</button></div>
     </Modal>
   )
 }

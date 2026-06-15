@@ -9,7 +9,7 @@ import { segments as deriveDay } from './lib/day'
 import { gitEmails } from './lib/git'
 import { checkForUpdate } from './lib/updater'
 import { computeOvertime, weekWorkedSeconds } from './lib/overtime'
-import { reportMarkdown, reportCsv, buildMonthReport, hoursSummaryCsv } from './lib/report'
+import { reportMarkdown, reportCsv, buildMonthReport, buildReport } from './lib/report'
 import { MqttPublisher, WTSnapshot } from './lib/mqtt'
 import { assignTicketsForDay, testAi, listModels } from './lib/ai'
 import { ApiServer } from './lib/apiServer'
@@ -91,6 +91,21 @@ function generateMonthReport(year: number, month: number): string | null {
     fs.mkdirSync(folder, { recursive: true })
     const slug = (config.employeeName || '').trim().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()
     const base = `monatsbericht-${rep.key}${slug ? '-' + slug : ''}`
+    const htmlPath = path.join(folder, base + '.html')
+    fs.writeFileSync(htmlPath, rep.html)
+    fs.writeFileSync(path.join(folder, base + '.csv'), rep.csv)
+    return htmlPath
+  } catch { return null }
+}
+
+/** Auswertung über einen frei gewählten Zeitraum erzeugen (HTML + CSV), Pfad zurück. */
+function generateRangeReport(fromMs: number, toMs: number): string | null {
+  const rep = buildReport(fromMs, toMs, Date.now(), graceSeconds(), config)
+  const folder = reportsFolder()
+  try {
+    fs.mkdirSync(folder, { recursive: true })
+    const slug = (config.employeeName || '').trim().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()
+    const base = `auswertung-${rep.key}${slug ? '-' + slug : ''}`
     const htmlPath = path.join(folder, base + '.html')
     fs.writeFileSync(htmlPath, rep.html)
     fs.writeFileSync(path.join(folder, base + '.csv'), rep.csv)
@@ -393,14 +408,16 @@ function setupIpc() {
     if (r.canceled || !r.filePath) return false
     try { fs.writeFileSync(r.filePath, content); return true } catch { return false }
   })
-  ipcMain.handle('export-hours', async (_e, gran: 'day' | 'week' | 'month') => {
-    const now = new Date()
-    const label = gran === 'day' ? `stunden-je-tag-${now.toLocaleDateString('sv-SE').slice(0, 7)}`
-      : gran === 'week' ? `stunden-je-woche-${now.getFullYear()}` : `stunden-je-monat-${now.getFullYear()}`
-    const content = hoursSummaryCsv(Date.now(), graceSeconds(), gran)
-    const r = await dialog.showSaveDialog({ defaultPath: `worktracker-${label}.csv`, filters: [{ name: 'CSV', extensions: ['csv'] }] })
-    if (r.canceled || !r.filePath) return false
-    try { fs.writeFileSync(r.filePath, content); return true } catch { return false }
+  // Auswertung für einen Zeitraum (YYYY-MM-DD .. YYYY-MM-DD) erzeugen + öffnen.
+  ipcMain.handle('export-report', (_e, fromStr: string, toStr: string) => {
+    const parse = (s: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); if (!m) return null; return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime() }
+    let a = parse(fromStr), b = parse(toStr)
+    if (a === null || b === null) return { ok: false, error: 'Datum als YYYY-MM-DD' }
+    if (a > b) { const t = a; a = b; b = t }
+    const html = generateRangeReport(a, b)
+    if (!html) return { ok: false, error: 'Auswertung konnte nicht erstellt werden' }
+    shell.openPath(html)
+    return { ok: true, file: html, folder: reportsFolder() }
   })
   ipcMain.handle('check-update', () => doCheckUpdate(true))
   ipcMain.handle('open-external', (_e, url: string) => shell.openExternal(url))
