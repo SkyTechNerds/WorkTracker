@@ -229,19 +229,19 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
     return `<tr><td><strong>KW ${w.week}</strong><small>${range}</small></td><td><div class="mini-stack">${mini}</div></td><td class="num">${hm(work)}</td><td class="num">${hm(w.cats.pause)}</td><td class="num">${hm(w.soll)}</td><td>${badge}</td></tr>`
   }).join('')
 
-  // ---- Projektkarten ----
-  const projCards = projList.map(p => {
-    const tickets = Object.entries(p.tickets).sort((a, b) => b[1] - a[1]).map(([t, s]) => `<li><span>${esc(t)}</span><b>${hm(s)}</b></li>`).join('')
+  // ---- Projektkarten (0-Minuten-Einträge ausblenden) ----
+  const visProj = projList.filter(p => p.seconds >= 60)
+  const projCards = visProj.map(p => {
+    const tickets = Object.entries(p.tickets).filter(([, s]) => s >= 60).sort((a, b) => b[1] - a[1]).map(([t, s]) => `<li><span>${esc(t)}</span><b>${hm(s)}</b></li>`).join('')
     return `<article class="project-card"><div class="project-main"><div><span class="dot" style="background:${p.color}"></span><strong>${esc(p.name)}</strong></div><b>${hm(p.seconds)}</b><em>${pct(p.seconds, totalWork)}</em></div><div class="project-bar"><span style="width:${(totalWork > 0 ? p.seconds / totalWork * 100 : 0).toFixed(2)}%;background:${p.color}"></span></div><ul>${tickets}</ul></article>`
   }).join('')
-  const projLegend = projList.map(p => `<span><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</span>`).join('')
+  const projLegend = visProj.map(p => `<span><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</span>`).join('')
 
   // ---- Tagesdetail-Tabelle ----
-  const detailRows = (showCalendar ? days.filter(d => !d.future) : days.filter(d => d.hasBooking)).map(d => {
+  // Nur Tage mit Buchung anzeigen (Wochenende/keine Buchung nicht ausgeben).
+  const detailRows = days.filter(d => d.hasBooking).map(d => {
     const dt = new Date(d.ms)
     const dname = dt.toLocaleDateString('de-DE', { weekday: 'long' }); const ddate = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    if (d.weekend) return `<tr><td><strong>${dname}</strong><small>${ddate}</small></td><td>Wochenende</td><td class="num">–</td><td class="num">–</td><td><span class="badge frei">frei</span></td></tr>`
-    if (!d.hasBooking) return `<tr><td><strong>${dname}</strong><small>${ddate}</small></td><td class="muted">keine Buchung</td><td class="num">–</td><td class="num">–</td><td><span class="badge offen">keine Buchung</span></td></tr>`
     const items = d.items.map(it => `${esc(it.label)} ${hm(it.seconds)}`).join(', ')
     const badge = d.fill >= TARGET ? `<span class="badge voll">vollständig</span>` : `<span class="badge unter8h">unter ${hm(TARGET)}</span>`
     return `<tr><td><strong>${dname}</strong><small>${ddate}</small></td><td>${items}</td><td class="num">${hm(d.work)}</td><td class="num">${d.pause > 0 ? hm(d.pause) : '–'}</td><td>${badge}</td></tr>`
@@ -285,7 +285,7 @@ h2{margin:0;font-size:22px;letter-spacing:-.03em}.section-head p{margin:4px 0 0;
 .project-card{border:1px solid var(--line);border-radius:20px;padding:14px;background:#fff}
 .project-main{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center}.project-main>div:first-child{display:flex;align-items:center;gap:8px}.project-main strong{font-size:15px}.project-main b{font-size:16px}.project-main em{font-style:normal;color:var(--muted);font-size:12px}
 .project-bar{height:10px;background:#eef2f7;border-radius:99px;overflow:hidden;margin:12px 0}.project-bar span{display:block;height:100%;border-radius:99px}
-ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}li{display:flex;justify-content:space-between;gap:10px;color:#475467;font-size:12px}li b{color:#344054}
+ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}li{display:flex;justify-content:space-between;gap:10px;color:#475467;font-size:12px}li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}li b{color:#344054;flex-shrink:0;white-space:nowrap}
 .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:18px}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;background:#f8fafc}tr:last-child td{border-bottom:0}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}td small{display:block;color:var(--muted);margin-top:2px}
 .badge{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;background:#f2f4f7;color:#475467}.badge.voll{background:var(--ok);color:#166534}.badge.offen,.badge.unter8h{background:var(--warn);color:#9a3412}.badge.frei{background:#f1f5f9;color:#64748b}.badge.keinebuchung{background:#fee2e2;color:#991b1b}
 .insights{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}.insight{border:1px solid var(--line);border-radius:18px;padding:14px;background:#fff}.insight b{display:block;margin-bottom:5px}.insight p{margin:0;color:var(--muted)}
