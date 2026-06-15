@@ -76,7 +76,7 @@ function isoWeek(date: Date): number {
 interface DayData {
   ms: number; weekend: boolean; future: boolean; planrelevant: boolean
   cats: Record<Cat, number>; work: number; pause: number; fill: number; open: number
-  projects: Record<string, number>; items: { label: string; seconds: number }[]; hasBooking: boolean
+  projects: Record<string, number>; items: { label: string; seconds: number; note: string }[]; hasBooking: boolean
 }
 
 export interface MonthReport { year: number; month: number; key: string; html: string; csv: string; totalSeconds: number; workDays: number }
@@ -121,6 +121,7 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
     const cats: Record<Cat, number> = { customer: 0, internal: 0, meeting: 0, pause: 0 }
     const projects: Record<string, number> = {}
     const itemsMap: Record<string, number> = {}
+    const itemNotes: Record<string, Set<string>> = {}
     for (const s of segs) {
       const sec = Math.max(0, s.end - s.start) / 1000
       if (s.kind === 'break') { cats.pause += sec; continue }
@@ -134,6 +135,7 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
       pa.tickets[tk] = (pa.tickets[tk] || 0) + sec
       const ik = proj + (tk && tk !== UNASSIGNED && tk !== proj ? ` / ${tk}` : '')
       itemsMap[ik] = (itemsMap[ik] || 0) + sec
+      if (s.note) (itemNotes[ik] || (itemNotes[ik] = new Set())).add(s.note.trim())
     }
     const work = cats.customer + cats.internal + cats.meeting
     const pause = cats.pause
@@ -143,7 +145,7 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
     totalWork += work; totalPause += pause; totalMeeting += cats.meeting; totalInternal += cats.internal; totalCustomer += cats.customer
     if (hasBooking) { bookedDays++; totalOpen += open; if (fill >= TARGET) fullDays++; else underDays++ }
     else if (!weekend && !future) emptyWorkdays++
-    const items = Object.entries(itemsMap).map(([label, seconds]) => ({ label, seconds })).sort((a, b) => b.seconds - a.seconds)
+    const items = Object.entries(itemsMap).map(([label, seconds]) => ({ label, seconds, note: itemNotes[label] ? [...itemNotes[label]].join(' · ') : '' })).sort((a, b) => b.seconds - a.seconds)
     days.push({ ms, weekend, future, planrelevant: !weekend && !future, cats, work, pause, fill, open, projects, items, hasBooking })
   }
 
@@ -237,14 +239,18 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
   }).join('')
   const projLegend = visProj.map(p => `<span><i class="dot" style="background:${p.color}"></i>${esc(p.name)}</span>`).join('')
 
-  // ---- Tagesdetail-Tabelle ----
-  // Nur Tage mit Buchung anzeigen (Wochenende/keine Buchung nicht ausgeben).
-  const detailRows = days.filter(d => d.hasBooking).map(d => {
+  // ---- Tagesdetails (lesbare Timesheet-Blöcke pro Tag) ----
+  // Nur Tage mit Buchung; je Tag eine Aufgabenliste mit Beschreibung + Dauer.
+  const detailCards = days.filter(d => d.hasBooking).map(d => {
     const dt = new Date(d.ms)
     const dname = dt.toLocaleDateString('de-DE', { weekday: 'long' }); const ddate = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    const items = d.items.filter(it => it.seconds >= 60).map(it => `${esc(it.label)} ${hm(it.seconds)}`).join(', ')
     const badge = d.fill >= TARGET ? `<span class="badge voll">vollständig</span>` : `<span class="badge unter8h">unter ${hm(TARGET)}</span>`
-    return `<tr><td><strong>${dname}</strong><small>${ddate}</small></td><td>${items}</td><td class="num">${hm(d.work)}</td><td class="num">${d.pause > 0 ? hm(d.pause) : '–'}</td><td>${badge}</td></tr>`
+    const rows = d.items.filter(it => it.seconds >= 60).map(it => {
+      const [proj, tk] = it.label.includes(' / ') ? it.label.split(' / ') : [it.label, '']
+      return `<tr><td class="dd-task"><b>${esc(tk || proj)}</b>${tk ? `<small>${esc(proj)}</small>` : ''}</td><td class="dd-note">${it.note ? esc(it.note) : '<span class="dd-empty">—</span>'}</td><td class="num">${hm(it.seconds)}</td></tr>`
+    }).join('')
+    return `<div class="day-detail"><div class="dd-head"><b>${dname}, ${ddate}</b><span class="dd-sum">Arbeit ${hm(d.work)}${d.pause > 0 ? ` · Pause ${hm(d.pause)}` : ''} ${badge}</span></div>`
+      + `<table class="dd-table"><thead><tr><th>Aufgabe</th><th>Tätigkeit / Beschreibung</th><th class="num">Dauer</th></tr></thead><tbody>${rows}</tbody></table></div>`
   }).join('')
 
   const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(periodKind)} ${esc(monthLabel)}${who ? ' – ' + esc(who) : ''}</title>
@@ -287,6 +293,16 @@ h2{margin:0;font-size:22px;letter-spacing:-.03em}.section-head p{margin:4px 0 0;
 .project-bar{height:10px;background:#eef2f7;border-radius:99px;overflow:hidden;margin:12px 0}.project-bar span{display:block;height:100%;border-radius:99px}
 ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}li{display:flex;justify-content:space-between;gap:10px;color:#475467;font-size:12px}li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}li b{color:#344054;flex-shrink:0;white-space:nowrap}
 .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:18px}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;background:#f8fafc}tr:last-child td{border-bottom:0}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}td small{display:block;color:var(--muted);margin-top:2px}
+.day-details{display:flex;flex-direction:column;gap:14px}
+.day-detail{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff}
+.dd-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;background:#f8fafc;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.dd-head>b{font-size:15px}.dd-sum{color:var(--muted);font-size:13px;display:inline-flex;align-items:center;gap:8px}
+.dd-table{width:100%;border-collapse:collapse;background:#fff}
+.dd-table th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);text-align:left;padding:8px 16px;font-weight:600;background:#fff;border:0}
+.dd-table td{padding:9px 16px;border-top:1px solid var(--line);border-bottom:0;vertical-align:top;font-size:13px}
+.dd-table td.dd-task{width:200px}.dd-task b{display:block}.dd-task small{color:var(--muted);font-size:11px}
+.dd-note{color:#475467;line-height:1.45}.dd-empty{color:#cbd5e1}
+.dd-table td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:700;width:90px}
 .badge{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;background:#f2f4f7;color:#475467}.badge.voll{background:var(--ok);color:#166534}.badge.offen,.badge.unter8h{background:var(--warn);color:#9a3412}.badge.frei{background:#f1f5f9;color:#64748b}.badge.keinebuchung{background:#fee2e2;color:#991b1b}
 .insights{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}.insight{border:1px solid var(--line);border-radius:18px;padding:14px;background:#fff}.insight b{display:block;margin-bottom:5px}.insight p{margin:0;color:var(--muted)}
 .footer{color:var(--muted);font-size:12px;text-align:center;margin:20px 0}
@@ -323,8 +339,8 @@ ${showCalendar ? `<section class="section">
   <div class="projects">${projCards}</div></section>
 <section class="section"><div class="section-head"><div><h2>Auffälligkeiten für PM-Review</h2><p>Keine Bewertung, sondern schnelle Prüfpunkte für Statusgespräch oder Rechnungsvorbereitung.</p></div></div>
   <div class="insights">${insights.map(i => `<article class="insight"><b>${esc(i.t)}</b><p>${esc(i.p)}</p></article>`).join('')}</div></section>
-<section class="section"><div class="section-head"><div><h2>Tagesdetails</h2><p>Exakte Prüfung einzelner Tage – Arbeit ohne Pause, Pause separat.</p></div></div>
-  <div class="table-wrap"><table><thead><tr><th>Tag</th><th>Projekte / Tickets</th><th class="num">Arbeit</th><th class="num">Pause</th><th>Status</th></tr></thead><tbody>${detailRows}</tbody></table></div></section>
+<section class="section"><div class="section-head"><div><h2>Tagesdetails</h2><p>Je Tag die geleisteten Aufgaben mit Beschreibung und Dauer – für Projektmanager und Kunde nachvollziehbar.</p></div></div>
+  <div class="day-details">${detailCards}</div></section>
 <div class="footer">WorkTracker · ${esc(periodKind)} ${esc(monthLabel)}${who ? ' · ' + esc(who) : ''} · Ist-Aufwände, ${hm(TARGET)}-Tagesreferenz</div>
 </div></body></html>`
 
