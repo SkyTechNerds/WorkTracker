@@ -186,7 +186,7 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
   const emptyWeeks = weekList.filter(w => w.booking === 0)
   if (emptyWeeks.length) insights.push({ t: `KW ${emptyWeeks.map(w => w.week).join(', ')} ohne Buchungen`, p: 'Ganze Woche(n) ohne erfasste Zeit.' })
   if (underDays > 0) insights.push({ t: `${underDays} Tag(e) unter ${hm(TARGET)} Soll`, p: 'Differenz bis zur 8h-Tagesreferenz = nicht gebuchte Sollzeit.' })
-  if (totalWork > 0) insights.push({ t: `Meeting-Anteil ${pct(totalMeeting, totalWork)}`, p: `${hm(totalMeeting)} von ${hm(totalWork)} gebuchter Arbeit entfallen auf Meetings.` })
+  if (totalMeeting >= 60) insights.push({ t: `Meeting-Anteil ${pct(totalMeeting, totalWork)}`, p: `${hm(totalMeeting)} von ${hm(totalWork)} gebuchter Arbeit entfallen auf Meetings.` })
   if (top) insights.push({ t: `Top-Projekt ${esc(top.name)} = ${pct(top.seconds, totalWork)}`, p: `${hm(top.seconds)} – größter Anteil im Zeitraum.` })
 
   // ---- Helfer: gestapelter Tagesbalken ----
@@ -210,7 +210,7 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
     if (day.future) { cells.push(`<article class="day future">${head}<div class="stack"></div><div class="day-total muted">–</div></article>`); continue }
     if (!day.hasBooking) { cells.push(`<article class="day empty-workday">${head}<div class="stack"><span class="seg noentry" style="width:100%"></span></div><div class="day-total muted">keine Buchung</div></article>`); continue }
     const over = day.fill > TARGET ? day.fill - TARGET : 0
-    const pills = Object.entries(day.projects).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, s]) => `<span>${esc(n)} ${hm(s)}</span>`).join('')
+    const pills = Object.entries(day.projects).filter(([, s]) => s >= 60).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, s]) => `<span>${esc(n)} ${hm(s)}</span>`).join('')
     const totalLbl = `${hm(day.fill > TARGET ? TARGET : day.fill)} / ${hm(TARGET)}${over > 0 ? ` <em class="over">+${hm(over)}</em>` : ''}`
     cells.push(`<article class="day booked">${head}<div class="stack">${stack(day.cats, day.open, TARGET)}</div><div class="day-total">${totalLbl}</div><div class="day-pills">${pills}</div></article>`)
   }
@@ -242,7 +242,7 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
   const detailRows = days.filter(d => d.hasBooking).map(d => {
     const dt = new Date(d.ms)
     const dname = dt.toLocaleDateString('de-DE', { weekday: 'long' }); const ddate = dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    const items = d.items.map(it => `${esc(it.label)} ${hm(it.seconds)}`).join(', ')
+    const items = d.items.filter(it => it.seconds >= 60).map(it => `${esc(it.label)} ${hm(it.seconds)}`).join(', ')
     const badge = d.fill >= TARGET ? `<span class="badge voll">vollständig</span>` : `<span class="badge unter8h">unter ${hm(TARGET)}</span>`
     return `<tr><td><strong>${dname}</strong><small>${ddate}</small></td><td>${items}</td><td class="num">${hm(d.work)}</td><td class="num">${d.pause > 0 ? hm(d.pause) : '–'}</td><td>${badge}</td></tr>`
   }).join('')
@@ -335,6 +335,7 @@ ${showCalendar ? `<section class="section">
     if (!day.hasBooking) continue
     const date = new Date(day.ms).toLocaleDateString('sv-SE'); const wk = `KW ${isoWeek(new Date(day.ms))}`
     for (const it of day.items) {
+      if (it.seconds < 60) continue
       const [proj, ticket] = it.label.includes(' / ') ? it.label.split(' / ') : [it.label, '']
       const catName = proj === 'Meetings' ? 'Meeting' : internalSet.has(proj) || proj === 'Ohne Projekt' ? 'Intern' : 'Kunde'
       c.push([date, wk, catName, proj, ticket, hm(it.seconds), dec(it.seconds)].map(cesc).join(';'))
