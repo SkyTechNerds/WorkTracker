@@ -479,8 +479,12 @@ function setupIpc() {
 
   ipcMain.handle('popup-result', (_e, kind: string, value: string, payload?: { from?: string; to?: string; project?: string }) => {
     if (kind === 'prompt') {
-      // Arbeit -> aktiv lassen; Pause/Privat -> gerade gestartetes Arbeiten verwerfen + Pause halten.
-      if (value === 'pause' || value === 'privat') tracker.revertActivation()
+      // Arbeit -> sicher (re)aktivieren: falls zwischenzeitlich Feierabend/Pause
+      // ausgelöst wurde (z. B. verspätetes Sleep-Event direkt nach dem Aufwachen,
+      // Lock, Idle), war das Tracking schon gestoppt -> resumeDay() bringt es zurück.
+      // Pause/Privat -> gerade gestartetes Arbeiten verwerfen + Pause halten.
+      if (value === 'arbeit') resumeDay()
+      else if (value === 'pause' || value === 'privat') tracker.revertActivation()
       refreshTray()
     } else if (kind === 'meeting' && pendingMeeting) {
       let { start, end } = pendingMeeting

@@ -10,6 +10,10 @@ import { activeProject } from './git'
 
 export type Status = 'active' | 'paused' | 'off'
 
+/** Ein 'suspend' innerhalb dieser Spanne nach dem Aufwachen/Entsperren gilt als
+ *  Geister-Event (macOS-Wake-Sequenz) und wird ignoriert. */
+const WAKE_SUSPEND_GRACE_MS = 15_000
+
 export class Tracker extends EventEmitter {
   private config: AppConfig
   status: Status = 'off'
@@ -25,6 +29,7 @@ export class Tracker extends EventEmitter {
   private manualPause = false      // manuelle Pause (hält gegen Idle-Reaktivierung)
   private offDayKey = ''           // an welchem Tag Feierabend gilt
   private lastActivationTs = 0     // letzter active-Zeitpunkt (für Rückgängig via Popup)
+  private lastWakeTs = 0           // letztes Entsperren/Aufwachen (gegen Sleep-Geister-Events)
   private evalTimer?: NodeJS.Timeout
   private sampleTimer?: NodeJS.Timeout
   private graceSeconds: number
@@ -49,13 +54,18 @@ export class Tracker extends EventEmitter {
     this.log({ ts: Date.now(), type: 'appStart', reason: 'launch' })
 
     powerMonitor.on('lock-screen', () => this.setLocked(true))
-    powerMonitor.on('unlock-screen', () => this.setLocked(false))
+    powerMonitor.on('unlock-screen', () => { this.lastWakeTs = Date.now(); this.setLocked(false) })
     powerMonitor.on('suspend', () => {
+      // macOS feuert beim Aufwachen manchmal ein verspätetes 'suspend' wenige Sekunden
+      // NACH dem Entsperren/Resume — das ist kein echtes Zubettgehen. Solche Geister-
+      // Events ignorieren, sonst löst es fälschlich Feierabend aus und stoppt die gerade
+      // beim Login gestartete Arbeit (Popup-„Arbeit" lief dann ins Leere).
+      if (Date.now() - this.lastWakeTs < WAKE_SUSPEND_GRACE_MS) return
       // Zuklappen/Standby: optional sofort Feierabend, sonst wie Lock (Pause).
       if (this.config.endDayOnSleep) this.feierabend('sleep')
       else this.setLocked(true)
     })
-    powerMonitor.on('resume', () => this.setLocked(false))
+    powerMonitor.on('resume', () => { this.lastWakeTs = Date.now(); this.setLocked(false) })
 
     this.evalTimer = setInterval(() => { this.evaluate('tick'); this.emit('update') }, 20_000)
     this.sampleTimer = setInterval(() => this.sample(), Math.max(15, this.config.sampleIntervalSeconds) * 1000)
