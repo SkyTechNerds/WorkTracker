@@ -25,9 +25,13 @@ export class Tracker extends EventEmitter {
 
   private screenLocked = false
   private currentlyActive = false
-  private manualOff = false        // Feierabend gesetzt
-  private manualPause = false      // manuelle Pause (hält gegen Idle-Reaktivierung)
-  private offDayKey = ''           // an welchem Tag Feierabend gilt
+  // Session-Modell: Erfassung läuft NUR, wenn eine Arbeitssitzung explizit gestartet
+  // wurde ("Arbeit"/resumeWork). Sie wird durch "Pause"/"Privat"/"Feierabend" beendet
+  // und überlebt KEINEN Tageswechsel — d. h. nichts wird automatisch (Idle/Unlock/Tick)
+  // mitgezählt, solange keine Sitzung läuft (kein Nacht-/Wochenend-Mitzählen).
+  private working = false                                  // läuft eine Arbeitssitzung?
+  private stoppedReason: 'pause' | 'feierabend' | null = null  // warum gerade keine (für Anzeige)
+  private sessionDayKey = ''                               // Tag, an dem die Sitzung gestartet wurde
   private lastActivationTs = 0     // letzter active-Zeitpunkt (für Rückgängig via Popup)
   private lastWakeTs = 0           // letztes Entsperren/Aufwachen (gegen Sleep-Geister-Events)
   private evalTimer?: NodeJS.Timeout
@@ -45,9 +49,20 @@ export class Tracker extends EventEmitter {
   /** Sprechendes Label für Anzeige/MQTT. */
   get displayStatus(): 'Arbeit' | 'Pause' | 'Feierabend' | 'Bereit' {
     if (this.status === 'active') return 'Arbeit'
-    if (this.manualOff) return 'Feierabend'
-    if (this.status === 'paused') return 'Pause'
-    return 'Bereit'
+    if (this.stoppedReason === 'feierabend') return 'Feierabend'
+    if (this.working || this.stoppedReason === 'pause') return 'Pause'  // Sitzung läuft (Idle-Pause) ODER manuell pausiert
+    return 'Bereit'  // keine Sitzung gestartet
+  }
+
+  /** Innerhalb des konfigurierten Arbeitszeit-Fensters (Wochentag + Stunden)?
+   *  Steuert NUR, ob beim Entsperren proaktiv zum Start gefragt wird — nie das Zählen. */
+  private withinWorkWindow(d = Date.now()): boolean {
+    const date = new Date(d)
+    const wd = date.getDay() + 1 // JS 0=So..6=Sa -> Config 1=So..7=Sa
+    const days = this.config.workdayWeekdays?.length ? this.config.workdayWeekdays : [2, 3, 4, 5, 6]
+    if (!days.includes(wd)) return false
+    const h = date.getHours()
+    return h >= (this.config.workdayStartHour ?? 0) && h < (this.config.workdayEndHour ?? 24)
   }
 
   start() {
@@ -72,6 +87,9 @@ export class Tracker extends EventEmitter {
 
     this.evaluate('launch')
     this.emit('update')
+    // Beim (Login-)Start in der Arbeitszeit zum Start auffordern, wenn keine Sitzung
+    // läuft — beim Auto-Launch kommt nicht zwingend ein 'unlock'-Event.
+    if (!this.working && !this.inCall && this.withinWorkWindow()) this.emit('promptStart')
   }
 
   stop() {
@@ -93,21 +111,22 @@ export class Tracker extends EventEmitter {
     if (this.screenLocked === v) return
     this.screenLocked = v
     this.log({ ts: Date.now(), type: v ? 'lock' : 'unlock' })
-    // Beim Sperren den manuellen Pause-Hold lösen -> nächstes Entsperren fragt neu.
-    if (v) this.manualPause = false
-    // Beim Entsperren an einem neuen Tag den Feierabend-Status zurücksetzen.
-    if (!v && this.manualOff && this.dayKey() !== this.offDayKey) this.manualOff = false
     this.evaluate(v ? 'lock' : 'unlock')
     this.emit('update')
+    // Beim Entsperren in der Arbeitszeit proaktiv zum Start auffordern, wenn keine
+    // Sitzung läuft (Auto-Start gibt es nicht mehr). Außerhalb des Fensters / am
+    // Wochenende KEIN Popup — dann bleibt es einfach privat/ungezählt.
+    if (!v && !this.working && !this.inCall && this.withinWorkWindow()) this.emit('promptStart')
   }
 
   private dayKey(d = Date.now()) { return new Date(d).toLocaleDateString('sv-SE') }
 
-  /** Feierabend: Tag beenden, bis zum nächsten Tag oder „Arbeit fortsetzen". */
+  /** Feierabend: Arbeitssitzung beenden – nichts wird mehr erfasst, bis „Arbeit"
+   *  wieder explizit gestartet wird (überlebt Tageswechsel/Standby/Neustart). */
   feierabend(reason = 'feierabend') {
-    this.manualOff = true
-    this.manualPause = false   // Pause-Hold ist mit Feierabend hinfällig (z. B. Standby-Pfad)
-    this.offDayKey = this.dayKey()
+    this.working = false
+    this.stoppedReason = 'feierabend'
+    this.sessionDayKey = ''
     if (this.currentlyActive) {
       this.currentlyActive = false
       this.log({ ts: Date.now(), type: 'inactive', reason })
@@ -119,24 +138,28 @@ export class Tracker extends EventEmitter {
 
   /** Feierabend-Zustand beim Start wiederherstellen (kein Event, kein Tracking). */
   restoreFeierabend() {
-    this.manualOff = true
-    this.offDayKey = this.dayKey()
+    this.working = false
+    this.stoppedReason = 'feierabend'
+    this.sessionDayKey = ''
     this.currentlyActive = false
     this.status = 'off'
   }
 
-  /** Manuell „Arbeit fortsetzen" – hebt Feierabend/Pause-Override auf. */
+  /** Manuell „Arbeit (fort)setzen" – startet eine Arbeitssitzung (das EINZIGE, was
+   *  Erfassung anschaltet). Idle/Sperren innerhalb der Sitzung pausieren nur. */
   resumeWork() {
-    this.manualOff = false
-    this.manualPause = false
+    this.working = true
+    this.stoppedReason = null
+    this.sessionDayKey = this.dayKey()
     this.currentlyActive = false  // erzwingt frisches active-Event in evaluate
     this.evaluate('manual')
     this.emit('update')
   }
 
-  /** Manuell Pause setzen (hält gegen Idle-Reaktivierung bis „Arbeiten"). */
+  /** Manuell Pause: Sitzung anhalten – kein Mitzählen, bis „Arbeit" wieder klickt. */
   pauseWork() {
-    this.manualPause = true
+    this.working = false
+    this.stoppedReason = 'pause'
     if (this.currentlyActive) {
       this.currentlyActive = false
       this.log({ ts: Date.now(), type: 'inactive', reason: 'manual' })
@@ -146,10 +169,11 @@ export class Tracker extends EventEmitter {
     this.emit('update')
   }
 
-  /** Popup-Antwort „Pause/Privat": gerade gestartetes Arbeiten rückgängig machen
-   *  (kein Arbeitsintervall) und Pause halten, bis „Arbeiten" geklickt wird. */
+  /** Popup-Antwort „Pause/Privat": Sitzung NICHT starten (bzw. gerade gestartetes
+   *  Arbeiten verwerfen) – es wird nichts erfasst, bis „Arbeit" geklickt wird. */
   revertActivation() {
-    this.manualPause = true
+    this.working = false
+    this.stoppedReason = 'pause'
     this.currentlyActive = false
     if (this.lastActivationTs) this.log({ ts: this.lastActivationTs, type: 'inactive', reason: 'prompt-pause' })
     this.status = 'paused'
@@ -162,27 +186,32 @@ export class Tracker extends EventEmitter {
   }
 
   private evaluate(reason: string) {
-    // Feierabend endet automatisch beim Tageswechsel – sonst bliebe der
-    // gestrige Feierabend heute aktiv und es würde nicht erfasst/gefragt.
-    if (this.manualOff && this.dayKey() !== this.offDayKey) this.manualOff = false
+    // Eine Arbeitssitzung überlebt KEINEN Tageswechsel – der neue Tag braucht einen
+    // expliziten Start (sonst würde eine abends offen gebliebene Sitzung am nächsten
+    // Morgen still weiterzählen).
+    if (this.working && this.sessionDayKey && this.dayKey() !== this.sessionDayKey) {
+      this.working = false
+      this.stoppedReason = 'feierabend'
+      this.sessionDayKey = ''
+    }
 
     const threshold = Math.max(1, this.config.idleThresholdMinutes) * 60
     const idle = this.idleSeconds()
     // Beim Entsperren/Aufwachen ist der User definitiv präsent – die System-Idle-Zeit
-    // ist da oft noch veraltet (zählt die Sperrzeit mit). Daher als anwesend werten,
-    // damit Arbeit aktiviert wird und das „Arbeit/Pause/Privat"-Popup erscheint.
+    // ist da oft noch veraltet (zählt die Sperrzeit mit). Daher als anwesend werten.
     const present = idle < threshold || this.inCall || reason === 'unlock'
-    const desired = !this.manualOff && !this.manualPause && !this.screenLocked && present
+    // Erfassung NUR bei laufender Sitzung – Idle/Unlock/Tick startet nie von allein.
+    const desired = this.working && !this.screenLocked && present
 
     if (desired === this.currentlyActive) {
-      this.status = this.currentlyActive ? 'active' : (this.status === 'off' ? 'off' : 'paused')
+      this.status = this.currentlyActive ? 'active' : (this.working || this.stoppedReason === 'pause' ? 'paused' : 'off')
       return
     }
     if (!desired) {
       this.currentlyActive = false
       const ts = reason === 'tick' ? Date.now() - idle * 1000 : Date.now()
       this.log({ ts, type: 'inactive', reason })
-      this.status = 'paused'
+      this.status = this.working ? 'paused' : 'off'
       this.stateSince = ts
     } else {
       this.currentlyActive = true

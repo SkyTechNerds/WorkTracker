@@ -561,6 +561,9 @@ app.whenReady().then(() => {
       'In Teams die Drittanbieter-API aktivieren (Einstellungen → Datenschutz), damit Meetings automatisch erkannt werden.')
   })
   tracker.on('update', () => { refreshTray(); win?.webContents.send('tick'); publishMqtt(); checkDailyLimit() })
+  // Keine Sitzung aktiv + Anwesenheit in der Arbeitszeit -> proaktiv zum Start fragen
+  // (Erfassung startet nie von allein). promptMode 'off' = nie fragen (Start nur via Tray/App).
+  tracker.on('promptStart', () => { if (config.promptMode !== 'off') openPopup('prompt', {}) })
 
   setupIpc()
   buildTray()

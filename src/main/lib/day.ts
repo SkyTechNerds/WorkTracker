@@ -129,11 +129,13 @@ export function deriveSegments(dateMs: number, nowMs: number, graceSeconds: numb
     }
   }
 
-  // Laufende Pause heute sichtbar machen.
+  // Laufende Pause heute sichtbar machen – ABER nur bei einer echten Idle-/Sperr-Pause
+  // INNERHALB einer laufenden Sitzung ('tick'/'lock'). Nach einem expliziten Stopp
+  // (Privat/Pause/Feierabend/Standby) wird nichts angehängt = es läuft einfach nichts.
   if (isToday(dateMs) && activeSince === null) {
     const lastWorkEnd = intervals[intervals.length - 1][1]
     const lastState = [...events].reverse().find(e => e.type === 'active' || e.type === 'inactive')
-    if (lastState && lastState.type === 'inactive' && lastState.reason !== 'feierabend' && lastState.reason !== 'quit') {
+    if (lastState && lastState.type === 'inactive' && (lastState.reason === 'tick' || lastState.reason === 'lock')) {
       const cap = Math.min(nowMs, endOfDay(dateMs))
       if (cap > lastWorkEnd) segs.push({ id: randomUUID(), start: lastWorkEnd, end: cap, kind: 'break', source: 'auto' })
     }
