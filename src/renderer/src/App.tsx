@@ -477,16 +477,24 @@ function CalendarView() {
                 <span className="tk"><span className="dot" style={{ background: g.color }} /><b>{g.name}</b></span>
                 <span className="secs">{hm(g.total)}</span>
               </div>
-              {Object.entries(g.tickets).sort((a, b) => b[1] - a[1]).map(([tk, secs]) => (
-                <div key={tk} className={`ticket-row sub ${tk === UNASSIGNED ? 'unassigned' : ''} ${hoverKey ? (hoverKey === 't:' + tk ? 'hl' : 'dim') : ''}`}
+              {Object.entries(g.tickets).sort((a, b) => b[1] - a[1]).map(([tk, secs]) => {
+                // „Zugewiesen" gilt übers Projekt: hat die Gruppe ein echtes Projekt, ist ein
+                // ticketloser Anteil NICHT „nicht zugewiesen", sondern nur ohne Ticket-Detail.
+                // Die orange Warnung bleibt nur der Gruppe „Ohne Projekt" (gar keine Zuordnung).
+                const hasProject = g.key.startsWith('p:')
+                const ticketless = tk === UNASSIGNED
+                const warn = ticketless && !hasProject
+                const label = ticketless ? (hasProject ? '(ohne Ticket)' : UNASSIGNED) : tk
+                return (
+                <div key={tk} className={`ticket-row sub ${warn ? 'unassigned' : ''} ${hoverKey ? (hoverKey === 't:' + tk ? 'hl' : 'dim') : ''}`}
                   onMouseEnter={() => { setHoverKey('t:' + tk); setHoverColor(g.color) }} onMouseLeave={() => setHoverKey(null)}>
-                  <span className="tk-name">{tk}</span>
+                  <span className="tk-name">{label}</span>
                   <span className="secs">{hm(secs)}
                     <button className="row-act" title="Bearbeiten / Zeit hinzufügen" onClick={() => setAssignKey(tk)}><Icon name="pencil" size={13} /></button>
                     <button className="row-act danger" title="Löschen" onClick={() => deleteTicket(tk)}><Icon name="trash" size={13} /></button>
                   </span>
                 </div>
-              ))}
+              )})}
             </div>
           ))}
 
