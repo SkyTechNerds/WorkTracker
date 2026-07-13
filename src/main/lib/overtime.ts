@@ -25,7 +25,9 @@ export function weekWorkedSeconds(nowMs: number, graceSeconds: number): number {
   return total
 }
 
-export function computeOvertime(config: AppConfig, nowMs: number, graceSeconds: number): OvertimeResult {
+/** untilMs (optional): kumuliert nur bis zu diesem Stichtag (Zeitraum-Ende), max. heute.
+ *  Ohne Angabe = bis heute (aktueller Gesamt-Saldo, wie im Überstunden-Tab). */
+export function computeOvertime(config: AppConfig, nowMs: number, graceSeconds: number, untilMs = nowMs): OvertimeResult {
   const first = earliestDay()
   const days: OvertimeDay[] = []
   let balance = config.overtimeStartBalanceHours || 0
@@ -34,7 +36,9 @@ export function computeOvertime(config: AppConfig, nowMs: number, graceSeconds: 
   const start = new Date(first); start.setHours(0, 0, 0, 0)
   const today = new Date(nowMs); today.setHours(0, 0, 0, 0)
   const todayMs = today.getTime()
-  for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+  const until = new Date(untilMs); until.setHours(0, 0, 0, 0)
+  const loopEnd = Math.min(todayMs, until.getTime()) // nie über heute hinaus
+  for (let d = new Date(start); d.getTime() <= loopEnd; d.setDate(d.getDate() + 1)) {
     const dateMs = d.getTime()
     const s = summary(dateMs, nowMs, graceSeconds)
     const workedHours = s.workedSeconds / 3600

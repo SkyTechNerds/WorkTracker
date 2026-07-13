@@ -3,6 +3,7 @@
 import { Segment, AppConfig, UNASSIGNED } from './types'
 import { segments, ticketTotals, summary } from './day'
 import { isDayEnded } from './store'
+import { computeOvertime } from './overtime'
 
 function hm(seconds: number): string {
   const t = Math.round(seconds); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60)
@@ -193,6 +194,13 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
   const status = emptyWorkdays > 0 ? 'Prüfen' : 'Vollständig'
   const saldo = saldoIst - saldoSoll
   const saldoStr = `${saldo >= 0 ? '+' : '−'}${hm(Math.abs(saldo))}`
+  // Gesamt-Saldo (kumuliert über die ganze Historie) bis zum Zeitraum-Ende (max. heute):
+  // aktueller Zeitraum -> aktueller Kontostand (wie Überstunden-Tab), Vergangenheit -> Stand
+  // zum Periodenende. Inkl. konfiguriertem Startsaldo.
+  const gesamtHours = computeOvertime(config, nowMs, graceSeconds, cutoff).balanceHours
+  const gesamtSec = gesamtHours * 3600
+  const gesamtStr = `${gesamtHours >= 0 ? '+' : '−'}${hm(Math.abs(gesamtSec))}`
+  const gesamtStand = new Date(cutoff).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   // ---- Auffälligkeiten (regelbasiert) ----
   const insights: { t: string; p: string }[] = []
@@ -334,7 +342,8 @@ ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px
   <div class="kpi"><span>Meetings</span><b>${hm(totalMeeting)}</b><small>${pct(totalMeeting, totalWork)} der Arbeit</small></div>
   <div class="kpi"><span>Pausen</span><b>${hm(totalPause)}</b><small>nicht abrechenbar</small></div>
   <div class="kpi"><span>Nicht gebuchte Sollzeit</span><b>${hm(totalOpen)}</b><small>Rest bis ${hm(TARGET)} an gebuchten Tagen</small></div>
-  <div class="kpi saldo"><span>Saldo Über-/Minus</span><b class="${saldo >= 0 ? 'pos' : 'neg'}">${saldoStr}</b><small>Ist ${hm(saldoIst)} − Soll ${hm(saldoSoll)}${saldoIst === 0 && saldoSoll === 0 ? ' (offen)' : ''}</small></div>
+  <div class="kpi saldo"><span>Gesamt-Saldo</span><b class="${gesamtHours >= 0 ? 'pos' : 'neg'}">${gesamtStr}</b><small>Über-/Minusstunden gesamt · Stand ${gesamtStand}</small></div>
+  <div class="kpi saldo"><span>Saldo Zeitraum</span><b class="${saldo >= 0 ? 'pos' : 'neg'}">${saldoStr}</b><small>Ist ${hm(saldoIst)} − Soll ${hm(saldoSoll)}${saldoIst === 0 && saldoSoll === 0 ? ' (offen)' : ''}</small></div>
 </section>
 ${showCalendar ? `<section class="section">
   <div class="section-head"><div><h2>Arbeitsverlauf nach Kalenderlogik</h2><p>Alle Tage des Zeitraums sichtbar. Jeder gebuchte Arbeitstag nutzt ${hm(TARGET)} als Referenz: Kunde + Intern + Meeting + Pause + ggf. nicht gebuchte Sollzeit.</p></div>
