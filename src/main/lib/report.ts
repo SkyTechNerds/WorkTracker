@@ -2,6 +2,7 @@
 
 import { Segment, AppConfig, UNASSIGNED } from './types'
 import { segments, ticketTotals, summary } from './day'
+import { isDayEnded } from './store'
 
 function hm(seconds: number): string {
   const t = Math.round(seconds); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60)
@@ -110,6 +111,10 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
   const projAgg: Record<string, { name: string; seconds: number; tickets: Record<string, number>; color: string }> = {}
   let totalWork = 0, totalPause = 0, totalMeeting = 0, totalInternal = 0, totalCustomer = 0
   let bookedDays = 0, totalOpen = 0, emptyWorkdays = 0, fullDays = 0, underDays = 0, weekdaysInMonth = 0
+  // Über-/Minusstunden-Saldo (gleiche Logik wie der Überstunden-Tab): Ist − Soll über
+  // abgeschlossene Tage. Leere planrelevante Tage (Urlaub/krank) NICHT als Minus werten,
+  // laufenden Tag (heute, noch kein Feierabend) ausklammern -> kein künstliches −8h.
+  let saldoIst = 0, saldoSoll = 0
 
   for (const dd = new Date(first); dd <= last; dd.setDate(dd.getDate() + 1)) {
     const ms = new Date(dd.getFullYear(), dd.getMonth(), dd.getDate()).getTime()
@@ -145,6 +150,12 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
     totalWork += work; totalPause += pause; totalMeeting += cats.meeting; totalInternal += cats.internal; totalCustomer += cats.customer
     if (hasBooking) { bookedDays++; totalOpen += open; if (fill >= TARGET) fullDays++; else underDays++ }
     else if (!weekend && !future) emptyWorkdays++
+    // Saldo: nur abgeschlossene Tage; laufenden Tag + leere Arbeitstage überspringen.
+    const pending = ms === todayStart.getTime() && !isDayEnded(ms)
+    if (!future && !pending && !(work <= 0 && !weekend)) {
+      const targetSec = weekend ? 0 : TARGET // Wochenendarbeit = reine Überstunde (Soll 0)
+      saldoIst += work; saldoSoll += targetSec
+    }
     const items = Object.entries(itemsMap).map(([label, seconds]) => ({ label, seconds, note: itemNotes[label] ? [...itemNotes[label]].join(' · ') : '' })).sort((a, b) => b.seconds - a.seconds)
     days.push({ ms, weekend, future, planrelevant: !weekend && !future, cats, work, pause, fill, open, projects, items, hasBooking })
   }
@@ -180,6 +191,8 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
   const who = (config.employeeName || '').trim()
   const top = projList[0]
   const status = emptyWorkdays > 0 ? 'Prüfen' : 'Vollständig'
+  const saldo = saldoIst - saldoSoll
+  const saldoStr = `${saldo >= 0 ? '+' : '−'}${hm(Math.abs(saldo))}`
 
   // ---- Auffälligkeiten (regelbasiert) ----
   const insights: { t: string; p: string }[] = []
@@ -264,9 +277,10 @@ h1{margin:0;font-size:34px;line-height:1.08;letter-spacing:-.04em}.hero p{margin
 .report-meta{display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:10px;align-self:start}
 .meta-card{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:12px 14px}
 .meta-card span{display:block;color:#c9d3e4;font-size:12px}.meta-card b{display:block;font-size:18px;margin-top:2px}
-.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:16px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px}
 .kpi{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:16px;box-shadow:0 10px 30px rgba(16,24,40,.05)}
 .kpi span{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}.kpi b{display:block;margin-top:8px;font-size:24px;letter-spacing:-.03em}.kpi small{display:block;margin-top:4px;color:var(--muted)}
+.kpi.saldo{border-color:#cbd5e1}.kpi b.pos{color:#16a34a}.kpi b.neg{color:#dc2626}
 .section{margin-top:18px;background:var(--paper);border:1px solid var(--line);border-radius:26px;padding:20px;box-shadow:0 10px 30px rgba(16,24,40,.05)}
 .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap}
 h2{margin:0;font-size:22px;letter-spacing:-.03em}.section-head p{margin:4px 0 0;color:var(--muted)}
@@ -320,6 +334,7 @@ ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px
   <div class="kpi"><span>Meetings</span><b>${hm(totalMeeting)}</b><small>${pct(totalMeeting, totalWork)} der Arbeit</small></div>
   <div class="kpi"><span>Pausen</span><b>${hm(totalPause)}</b><small>nicht abrechenbar</small></div>
   <div class="kpi"><span>Nicht gebuchte Sollzeit</span><b>${hm(totalOpen)}</b><small>Rest bis ${hm(TARGET)} an gebuchten Tagen</small></div>
+  <div class="kpi saldo"><span>Saldo Über-/Minus</span><b class="${saldo >= 0 ? 'pos' : 'neg'}">${saldoStr}</b><small>Ist ${hm(saldoIst)} − Soll ${hm(saldoSoll)}${saldoIst === 0 && saldoSoll === 0 ? ' (offen)' : ''}</small></div>
 </section>
 ${showCalendar ? `<section class="section">
   <div class="section-head"><div><h2>Arbeitsverlauf nach Kalenderlogik</h2><p>Alle Tage des Zeitraums sichtbar. Jeder gebuchte Arbeitstag nutzt ${hm(TARGET)} als Referenz: Kunde + Intern + Meeting + Pause + ggf. nicht gebuchte Sollzeit.</p></div>
