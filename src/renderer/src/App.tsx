@@ -168,7 +168,6 @@ function CalendarView() {
   const [exportOpen, setExportOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const [rangeOpen, setRangeOpen] = useState(false)
-  const [absenceOpen, setAbsenceOpen] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMsg, setAiMsg] = useState('')
   // Hover-Verknüpfung Sidebar <-> Kalender. Pause = eigenes Segment, Arbeit/Meeting = Ticket.
@@ -423,7 +422,6 @@ function CalendarView() {
         <span className="tb-sep" />
         {cfg.ai?.enabled && <button className="ico" title="KI: Tickets aus Commits zuordnen" disabled={aiBusy} onClick={runAi}>{aiBusy ? <span className="spin"><Icon name="spinner" /></span> : <Icon name="sparkles" />}</button>}
         <button className="ico" title="Ticket auf Zeitraum buchen (Von–Bis, Pausen werden abgezogen)" onClick={() => setRangeOpen(true)}><Icon name="tag" /></button>
-        <button className="ico" title="Krank/Urlaub buchen (Zeitraum) – Soll wird gewaivt, kein Minus" onClick={() => setAbsenceOpen(true)}><Icon name="activity" /></button>
         <button className="ico" title="Einzelnen Eintrag hinzufügen" onClick={() => { const d = new Date(dateMs); d.setHours(9, 0, 0, 0); const e = new Date(dateMs); e.setHours(10, 0, 0, 0); setEditing({ id: uuid(), start: d.getTime(), end: e.getTime(), kind: 'work', source: 'manual' }) }}><Icon name="plus" /></button>
         <span className="export-wrap" onClick={e => e.stopPropagation()}>
           <button className="ico" title="Exportieren" onClick={() => setExportOpen(v => !v)}><Icon name="download" /></button>
@@ -526,9 +524,10 @@ function CalendarView() {
         </div>
       </div>
 
-      {editing && <BlockEditor seg={editing} projects={cfg.projects} onSave={saveEdit} onDelete={deleteSeg} onCancel={() => setEditing(null)} />}
+      {editing && <BlockEditor seg={editing} projects={cfg.projects} onSave={saveEdit} onDelete={deleteSeg}
+        onAbsence={async (t, from, to) => { await window.wt.setAbsence(from, to, t); setEditing(null); load() }}
+        onCancel={() => setEditing(null)} />}
       {reportOpen && <ReportRange dateMs={dateMs} onClose={() => setReportOpen(false)} />}
-      {absenceOpen && <AbsenceRange dateMs={dateMs} onClose={() => setAbsenceOpen(false)} onDone={load} />}
       {assignKey && <TicketDetail group={assignKey} segments={segments} projects={cfg.projects}
         onAdd={(from, to, note, project) => assignRange(setTime(dateMs, from), setTime(dateMs, to), assignKey === UNASSIGNED ? '' : assignKey, note, project)}
         onDelete={(id) => persist(deleteFilling(id))}
@@ -547,14 +546,20 @@ function CalendarView() {
 function timeInput(ms: number): string { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
 function setTime(baseMs: number, hhmm: string): number { const [h, m] = hhmm.split(':').map(Number); const d = new Date(baseMs); d.setHours(h || 0, m || 0, 0, 0); return d.getTime() }
 
-function BlockEditor({ seg, projects, onSave, onDelete, onCancel }: { seg: Seg; projects: Project[]; onSave: (s: Seg) => void; onDelete: (id: string) => void; onCancel: () => void }) {
-  const [type, setType] = useState<'work' | 'break' | 'meeting'>(seg.kind === 'break' ? 'break' : (seg.meeting ? 'meeting' : 'work'))
+function BlockEditor({ seg, projects, onSave, onDelete, onAbsence, onCancel }: { seg: Seg; projects: Project[]; onSave: (s: Seg) => void; onDelete: (id: string) => void; onAbsence: (type: 'krank' | 'urlaub' | null, fromMs: number, toMs: number) => void; onCancel: () => void }) {
+  const [type, setType] = useState<'work' | 'break' | 'meeting' | 'krank' | 'urlaub'>(seg.kind === 'break' ? 'break' : (seg.meeting ? 'meeting' : 'work'))
   const [from, setFrom] = useState(timeInput(seg.start))
   const [to, setTo] = useState(timeInput(seg.end))
+  const iso = (ms: number) => new Date(ms).toLocaleDateString('sv-SE')
+  const parseDate = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).getTime() }
+  const [fromDate, setFromDate] = useState(iso(seg.start))
+  const [toDate, setToDate] = useState(iso(seg.start))
   const [ticket, setTicket] = useState(seg.ticket || '')
   const [note, setNote] = useState(seg.note || '')
   const [project, setProject] = useState(seg.project || '')
+  const isAbsence = type === 'krank' || type === 'urlaub'
   const save = () => {
+    if (isAbsence) { onAbsence(type as 'krank' | 'urlaub', parseDate(fromDate), parseDate(toDate)); return }
     const isBreak = type === 'break', isMeeting = type === 'meeting'
     const start = setTime(seg.start, from)
     let end = setTime(seg.end, to)
@@ -567,19 +572,29 @@ function BlockEditor({ seg, projects, onSave, onDelete, onCancel }: { seg: Seg; 
     })
   }
   return (
-    <Modal title="Eintrag bearbeiten" onCancel={onCancel}>
+    <Modal title={isAbsence ? 'Abwesenheit buchen' : 'Eintrag bearbeiten'} onCancel={onCancel}>
       <label>Art <select value={type} onChange={e => setType(e.target.value as any)}>
-        <option value="work">Arbeit</option><option value="meeting">Meeting</option><option value="break">Pause</option></select></label>
-      <div className="grid2"><label>Von <input type="time" value={from} onChange={e => setFrom(e.target.value)} /></label><label>Bis <input type="time" value={to} onChange={e => setTo(e.target.value)} /></label></div>
-      {type !== 'break' && <>
-        <label>Ticket / Titel <input value={ticket} onChange={e => setTicket(e.target.value)} placeholder={type === 'meeting' ? 'z. B. Jumo Daily' : 'z. B. PROJ-123'} /></label>
-        {projects.length > 0 && <label>{type === 'meeting' ? 'Kunde / Projekt' : 'Projekt (Farbe)'}
-          <select value={project} onChange={e => setProject(e.target.value)}>
-            <option value="">– keins –</option>
-            {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-          </select></label>}
-        <label>Beschreibung <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} /></label></>}
-      <div className="actions"><button className="danger" onClick={() => onDelete(seg.id)}>Löschen</button><span style={{ flex: 1 }} /><button onClick={onCancel}>Abbrechen</button><button className="primary" onClick={save}>Sichern</button></div>
+        <option value="work">Arbeit</option><option value="meeting">Meeting</option><option value="break">Pause</option>
+        <option value="krank">Krank (ganzer Tag)</option><option value="urlaub">Urlaub (ganzer Tag)</option></select></label>
+      {isAbsence ? <>
+        <p className="hint">Markiert die Tage im Zeitraum – das Tagessoll wird gewaivt, zählt also <b>nicht als Minus</b>. Bereits erfasste Zeit an diesen Tagen bleibt erhalten.</p>
+        <div className="grid2"><label>Von <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} /></label><label>Bis <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} /></label></div>
+      </> : <>
+        <div className="grid2"><label>Von <input type="time" value={from} onChange={e => setFrom(e.target.value)} /></label><label>Bis <input type="time" value={to} onChange={e => setTo(e.target.value)} /></label></div>
+        {type !== 'break' && <>
+          <label>Ticket / Titel <input value={ticket} onChange={e => setTicket(e.target.value)} placeholder={type === 'meeting' ? 'z. B. Jumo Daily' : 'z. B. PROJ-123'} /></label>
+          {projects.length > 0 && <label>{type === 'meeting' ? 'Kunde / Projekt' : 'Projekt (Farbe)'}
+            <select value={project} onChange={e => setProject(e.target.value)}>
+              <option value="">– keins –</option>
+              {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+            </select></label>}
+          <label>Beschreibung <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} /></label></>}
+      </>}
+      <div className="actions">
+        {isAbsence
+          ? <button className="danger" onClick={() => onAbsence(null, parseDate(fromDate), parseDate(toDate))}>Abwesenheit entfernen</button>
+          : <button className="danger" onClick={() => onDelete(seg.id)}>Löschen</button>}
+        <span style={{ flex: 1 }} /><button onClick={onCancel}>Abbrechen</button><button className="primary" onClick={save}>{isAbsence ? 'Buchen' : 'Sichern'}</button></div>
     </Modal>
   )
 }
@@ -722,37 +737,6 @@ function ReportRange({ dateMs, onClose }: { dateMs: number; onClose: () => void 
       <div className="grid2"><label>Von <input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>Bis <input type="date" value={to} onChange={e => setTo(e.target.value)} /></label></div>
       {msg && <p className="hint" style={{ color: msg.startsWith('✕') ? 'var(--neg)' : 'var(--muted)' }}>{msg}</p>}
       <div className="actions"><span style={{ flex: 1 }} /><button onClick={onClose}>Abbrechen</button><button className="primary" onClick={create}>Auswertung öffnen</button></div>
-    </Modal>
-  )
-}
-
-function AbsenceRange({ dateMs, onClose, onDone }: { dateMs: number; onClose: () => void; onDone: () => void }) {
-  const iso = (ms: number) => new Date(ms).toLocaleDateString('sv-SE')
-  const [from, setFrom] = useState(iso(dateMs))
-  const [to, setTo] = useState(iso(dateMs))
-  const [type, setType] = useState<'krank' | 'urlaub'>('krank')
-  const [msg, setMsg] = useState('')
-  const parse = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).getTime() }
-  const apply = async (t: 'krank' | 'urlaub' | null) => {
-    const a = parse(from), b = parse(to)
-    if (b < a) { setMsg('✕ „Bis" liegt vor „Von"'); return }
-    const r = await window.wt.setAbsence(a, b, t)
-    onDone(); if (r.ok) onClose()
-  }
-  return (
-    <Modal title="Krank / Urlaub buchen" onCancel={onClose}>
-      <p className="hint">Markiert die Tage im Zeitraum – das Tagessoll wird gewaivt, die Zeit zählt dann <b>nicht als Minus</b>. Bereits erfasste Arbeit an diesen Tagen bleibt erhalten.</p>
-      <div className="row" style={{ gap: 6, justifyContent: 'flex-start' }}>
-        <button className={type === 'krank' ? 'primary' : ''} onClick={() => setType('krank')}>Krank</button>
-        <button className={type === 'urlaub' ? 'primary' : ''} onClick={() => setType('urlaub')}>Urlaub</button>
-      </div>
-      <div className="grid2"><label>Von <input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>Bis <input type="date" value={to} onChange={e => setTo(e.target.value)} /></label></div>
-      {msg && <p className="hint" style={{ color: 'var(--neg)' }}>{msg}</p>}
-      <div className="actions">
-        <button className="link-danger" onClick={() => apply(null)}>Abwesenheit entfernen</button>
-        <span style={{ flex: 1 }} /><button onClick={onClose}>Abbrechen</button>
-        <button className="primary" onClick={() => apply(type)}>Buchen</button>
-      </div>
     </Modal>
   )
 }
