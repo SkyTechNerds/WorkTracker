@@ -1,9 +1,11 @@
 // Tages-Report (Markdown/CSV) + Monatsbericht (HTML/CSV) für Projektmanager.
 
-import { Segment, AppConfig, UNASSIGNED } from './types'
+import { Segment, AppConfig, AbsenceType, UNASSIGNED } from './types'
 import { segments, ticketTotals, summary } from './day'
-import { isDayEnded } from './store'
+import { isDayEnded, getDayAbsence } from './store'
 import { computeOvertime } from './overtime'
+
+const ABSENCE_LABEL: Record<AbsenceType, string> = { krank: 'Krank', urlaub: 'Urlaub' }
 
 function hm(seconds: number): string {
   const t = Math.round(seconds); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60)
@@ -79,6 +81,7 @@ interface DayData {
   ms: number; weekend: boolean; future: boolean; planrelevant: boolean
   cats: Record<Cat, number>; work: number; pause: number; fill: number; open: number
   projects: Record<string, number>; items: { label: string; seconds: number; note: string }[]; hasBooking: boolean
+  absence?: AbsenceType | null
 }
 
 export interface MonthReport { year: number; month: number; key: string; html: string; csv: string; totalSeconds: number; workDays: number }
@@ -116,6 +119,7 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
   // abgeschlossene Tage. Leere planrelevante Tage (Urlaub/krank) NICHT als Minus werten,
   // laufenden Tag (heute, noch kein Feierabend) ausklammern -> kein künstliches −8h.
   let saldoIst = 0, saldoSoll = 0
+  let krankDays = 0, urlaubDays = 0
 
   for (const dd = new Date(first); dd <= last; dd.setDate(dd.getDate() + 1)) {
     const ms = new Date(dd.getFullYear(), dd.getMonth(), dd.getDate()).getTime()
@@ -147,18 +151,22 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
     const pause = cats.pause
     const fill = work + pause
     const hasBooking = fill > 0
-    const open = (!weekend && !future && hasBooking) ? Math.max(0, TARGET - fill) : 0
+    const absence = future ? null : getDayAbsence(ms) // Krank/Urlaub: Soll gewaivt
+    if (absence === 'krank') krankDays++; else if (absence === 'urlaub') urlaubDays++
+    // Abwesenheitstage: kein offenes Soll, nicht als „unter Soll"/„leer" werten.
+    const open = (!weekend && !future && hasBooking && !absence) ? Math.max(0, TARGET - fill) : 0
     totalWork += work; totalPause += pause; totalMeeting += cats.meeting; totalInternal += cats.internal; totalCustomer += cats.customer
-    if (hasBooking) { bookedDays++; totalOpen += open; if (fill >= TARGET) fullDays++; else underDays++ }
-    else if (!weekend && !future) emptyWorkdays++
-    // Saldo: nur abgeschlossene Tage; laufenden Tag + leere Arbeitstage überspringen.
+    if (hasBooking) { bookedDays++; totalOpen += open; if (!absence) { if (fill >= TARGET) fullDays++; else underDays++ } }
+    else if (!weekend && !future && !absence) emptyWorkdays++
+    // Saldo: nur abgeschlossene Tage; laufenden Tag, leere Arbeitstage UND Abwesenheitstage
+    // (Krank/Urlaub sind neutral) überspringen.
     const pending = ms === todayStart.getTime() && !isDayEnded(ms)
-    if (!future && !pending && !(work <= 0 && !weekend)) {
+    if (!future && !pending && !absence && !(work <= 0 && !weekend)) {
       const targetSec = weekend ? 0 : TARGET // Wochenendarbeit = reine Überstunde (Soll 0)
       saldoIst += work; saldoSoll += targetSec
     }
     const items = Object.entries(itemsMap).map(([label, seconds]) => ({ label, seconds, note: itemNotes[label] ? [...itemNotes[label]].join(' · ') : '' })).sort((a, b) => b.seconds - a.seconds)
-    days.push({ ms, weekend, future, planrelevant: !weekend && !future, cats, work, pause, fill, open, projects, items, hasBooking })
+    days.push({ ms, weekend, future, planrelevant: !weekend && !future, cats, work, pause, fill, open, projects, items, hasBooking, absence })
   }
 
   const projList = Object.values(projAgg).sort((a, b) => b.seconds - a.seconds)
@@ -211,6 +219,7 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
   if (underDays > 0) insights.push({ t: `${underDays} Tag(e) unter ${hm(TARGET)} Soll`, p: 'Differenz bis zur 8h-Tagesreferenz = nicht gebuchte Sollzeit.' })
   if (totalMeeting >= 60) insights.push({ t: `Meeting-Anteil ${pct(totalMeeting, totalWork)}`, p: `${hm(totalMeeting)} von ${hm(totalWork)} gebuchter Arbeit entfallen auf Meetings.` })
   if (top) insights.push({ t: `Top-Projekt ${esc(top.name)} = ${pct(top.seconds, totalWork)}`, p: `${hm(top.seconds)} – größter Anteil im Zeitraum.` })
+  if (krankDays || urlaubDays) insights.push({ t: `${[krankDays && `${krankDays} Krank`, urlaubDays && `${urlaubDays} Urlaub`].filter(Boolean).join(' · ')}`, p: 'Abwesenheitstage – Soll gewaivt, zählen nicht als Minusstunden.' })
 
   // ---- Helfer: gestapelter Tagesbalken ----
   const stack = (cats: Record<Cat, number>, open: number, denomBase: number) => {
@@ -229,8 +238,9 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
     const d = new Date(day.ms)
     const dnum = d.getDate(); const dow = d.toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', '')
     const head = `<div class="day-head"><strong>${dnum}</strong><span>${dow}</span></div>`
-    if (day.weekend) { cells.push(`<article class="day weekend">${head}<div class="stack"><span class="seg weekendseg" style="width:100%"></span></div><div class="day-total muted">Wochenende</div></article>`); continue }
+    if (day.weekend && !day.absence) { cells.push(`<article class="day weekend">${head}<div class="stack"><span class="seg weekendseg" style="width:100%"></span></div><div class="day-total muted">Wochenende</div></article>`); continue }
     if (day.future) { cells.push(`<article class="day future">${head}<div class="stack"></div><div class="day-total muted">–</div></article>`); continue }
+    if (day.absence) { const extra = day.work > 0 ? ` · ${hm(day.work)}` : ''; cells.push(`<article class="day absence ${day.absence}">${head}<div class="stack"><span class="seg abs-${day.absence}" style="width:100%"></span></div><div class="day-total">${ABSENCE_LABEL[day.absence]}<span class="muted">${extra}</span></div></article>`); continue }
     if (!day.hasBooking) { cells.push(`<article class="day empty-workday">${head}<div class="stack"><span class="seg noentry" style="width:100%"></span></div><div class="day-total muted">keine Buchung</div></article>`); continue }
     const over = day.fill > TARGET ? day.fill - TARGET : 0
     const pills = Object.entries(day.projects).filter(([, s]) => s >= 60).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, s]) => `<span>${esc(n)} ${hm(s)}</span>`).join('')
@@ -305,6 +315,7 @@ h2{margin:0;font-size:22px;letter-spacing:-.03em}.section-head p{margin:4px 0 0;
 .stack,.mini-stack{height:12px;background:#eef2f7;border-radius:999px;overflow:hidden;display:flex;border:1px solid rgba(0,0,0,.04)}
 .mini-stack{height:14px;min-width:200px}
 .seg{display:block;height:100%;flex:0 0 auto}.seg.work{background:var(--work)}.seg.intern{background:var(--intern)}.seg.meetings{background:var(--meetings)}.seg.pause{background:var(--pause)}.seg.open{background:var(--open)}.seg.weekendseg{background:#f1f5f9}.seg.noentry{background:repeating-linear-gradient(45deg,#f8fafc 0,#f8fafc 5px,#edf2f7 5px,#edf2f7 10px)}
+.seg.abs-krank{background:#f9a8d4}.seg.abs-urlaub{background:#7dd3fc}.day.absence{background:#fff}.day.absence.krank{border-color:#f9a8d4}.day.absence.urlaub{border-color:#7dd3fc}.swatch.krank{background:#f9a8d4}.swatch.urlaub{background:#7dd3fc}
 .day-total{font-weight:800;font-size:13px}.day-total .over{color:#ea580c;font-style:normal;font-weight:700}.muted{color:#94a3b8;font-weight:600}
 .day-pills{display:flex;flex-wrap:wrap;gap:4px;margin-top:auto}.day-pills span{font-size:10.5px;color:#475467;background:#f2f4f7;border-radius:999px;padding:2px 6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .aside{display:flex;flex-direction:column;gap:12px}.note{border:1px solid var(--line);background:#f8fafc;border-radius:18px;padding:14px}.note h3{margin:0 0 8px;font-size:14px}.note p{margin:0;color:var(--muted)}
@@ -347,7 +358,7 @@ ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px
 </section>
 ${showCalendar ? `<section class="section">
   <div class="section-head"><div><h2>Arbeitsverlauf nach Kalenderlogik</h2><p>Alle Tage des Zeitraums sichtbar. Jeder gebuchte Arbeitstag nutzt ${hm(TARGET)} als Referenz: Kunde + Intern + Meeting + Pause + ggf. nicht gebuchte Sollzeit.</p></div>
-  <div class="legend"><span><i class="swatch work"></i>Kundenprojekt</span><span><i class="swatch intern"></i>Intern</span><span><i class="swatch meetings"></i>Meeting</span><span><i class="swatch pause"></i>Pause</span><span><i class="swatch open"></i>nicht gebuchte Sollzeit</span><span><i class="swatch weekend"></i>Wochenende / keine Buchung</span></div></div>
+  <div class="legend"><span><i class="swatch work"></i>Kundenprojekt</span><span><i class="swatch intern"></i>Intern</span><span><i class="swatch meetings"></i>Meeting</span><span><i class="swatch pause"></i>Pause</span><span><i class="swatch open"></i>nicht gebuchte Sollzeit</span><span><i class="swatch weekend"></i>Wochenende / keine Buchung</span>${krankDays ? '<span><i class="swatch krank"></i>Krank</span>' : ''}${urlaubDays ? '<span><i class="swatch urlaub"></i>Urlaub</span>' : ''}</div></div>
   <div class="grid-2">
     <div class="calendar-scroll"><div class="calendar"><div class="weekday">Mo</div><div class="weekday">Di</div><div class="weekday">Mi</div><div class="weekday">Do</div><div class="weekday">Fr</div><div class="weekday">Sa</div><div class="weekday">So</div>${cells.join('')}</div></div>
     <aside class="aside">
@@ -372,8 +383,9 @@ ${showCalendar ? `<section class="section">
   const cesc = (v: string) => /[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
   const c: string[] = ['Datum;Woche;Kategorie;Projekt;Ticket;Stunden;Dezimal']
   for (const day of days) {
-    if (!day.hasBooking) continue
     const date = new Date(day.ms).toLocaleDateString('sv-SE'); const wk = `KW ${isoWeek(new Date(day.ms))}`
+    if (day.absence) c.push([date, wk, 'Abwesenheit', ABSENCE_LABEL[day.absence], '', hm(day.work), dec(day.work)].map(cesc).join(';'))
+    if (!day.hasBooking) continue
     for (const it of day.items) {
       if (it.seconds < 60) continue
       const [proj, ticket] = it.label.includes(' / ') ? it.label.split(' / ') : [it.label, '']

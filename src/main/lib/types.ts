@@ -32,6 +32,9 @@ export interface Segment {
   source: SegmentSource
 }
 
+/** Abwesenheits-Typen (Soll wird gewaivt -> kein Minus). */
+export type AbsenceType = 'krank' | 'urlaub'
+
 export interface DaySummary {
   date: number
   start?: number
@@ -40,6 +43,7 @@ export interface DaySummary {
   breakSeconds: number
   segments: Segment[]
   materialized: boolean
+  absence?: AbsenceType | null
 }
 
 export type PromptMode = 'off' | 'onceADay' | 'afterBreaks' | 'everyUnlock'

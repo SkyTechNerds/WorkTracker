@@ -4,7 +4,7 @@
 import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { AppConfig, WTEvent, Segment, defaultConfig, PROJECT_COLORS } from './types'
+import { AppConfig, WTEvent, Segment, AbsenceType, defaultConfig, PROJECT_COLORS } from './types'
 
 /** Eine Palettenfarbe, die noch nicht vergeben ist (sonst zufällig). */
 function freeColor(used: string[]): string {
@@ -135,4 +135,21 @@ export function isDayEnded(d: Date | number): boolean {
 
 export function dailyDir(): string {
   return path.join(dataDir(), 'daily')
+}
+
+// ---- Abwesenheit (Krank/Urlaub) – waivt das Tagessoll, kein Minus ----
+
+const absenceFile = (d: Date | number) => path.join(dataDir(), 'daily', `${dayKey(d)}.absence`)
+
+export function setDayAbsence(d: Date | number, type: AbsenceType) {
+  try { fs.writeFileSync(absenceFile(d), type) } catch { /* ignore */ }
+}
+export function clearDayAbsence(d: Date | number) {
+  try { fs.rmSync(absenceFile(d)) } catch { /* ignore */ }
+}
+export function getDayAbsence(d: Date | number): AbsenceType | null {
+  try {
+    const t = fs.readFileSync(absenceFile(d), 'utf8').trim()
+    return t === 'krank' || t === 'urlaub' ? t : null
+  } catch { return null }
 }

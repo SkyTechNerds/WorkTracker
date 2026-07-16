@@ -1,10 +1,10 @@
 // Überstundenkonto: Saldo aus gearbeiteten Stunden vs. Tagesziel (portiert aus Swift).
 
-import { AppConfig } from './types'
+import { AppConfig, AbsenceType } from './types'
 import { summary } from './day'
-import { earliestDay, isDayEnded } from './store'
+import { earliestDay, isDayEnded, getDayAbsence } from './store'
 
-export interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean; pending?: boolean }
+export interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean; pending?: boolean; absence?: AbsenceType | null }
 // balanceHours = stabiler Saldo (nur abgeschlossene/vergangene Tage). Der laufende
 // Tag wird erst zum Feierabend (oder beim Tageswechsel) eingerechnet -> kein -8h am Morgen.
 export interface OvertimeResult { balanceHours: number; days: OvertimeDay[] }
@@ -43,16 +43,18 @@ export function computeOvertime(config: AppConfig, nowMs: number, graceSeconds: 
     const s = summary(dateMs, nowMs, graceSeconds)
     const workedHours = s.workedSeconds / 3600
     const wd = isWorkday(d, config.workdayWeekdays)
-    const target = wd ? config.targetHoursPerDay : 0
-    const delta = workedHours - target
+    const absence = getDayAbsence(dateMs) // Krank/Urlaub: neutraler Tag (Soll gilt als erfüllt)
+    const target = absence ? 0 : (wd ? config.targetHoursPerDay : 0)
+    // Abwesenheit = neutral: weder Minus (kein Soll offen) noch Plus (erfasste Zeit zählt nicht).
+    const delta = absence ? 0 : (workedHours - target)
     // Laufender Tag (heute, noch kein Feierabend): NICHT in den Saldo einrechnen,
     // sondern nur als „läuft" anzeigen -> kein -8h am Morgen.
     const pending = dateMs === todayMs && !isDayEnded(dateMs)
-    // Tage ganz ohne Arbeit an Arbeitstagen (z. B. Urlaub) nicht als Minus werten.
-    // Der laufende Tag wird trotzdem gezeigt (als Fortschritt), aber nie negativ gewertet.
-    if (workedHours <= 0 && wd && !pending) continue
+    // Leere Arbeitstage ohne Abwesenheits-Markierung nicht als Minus werten (überspringen).
+    // Krank-/Urlaubstage NICHT überspringen -> sie erscheinen (mit target 0, delta = geleistet).
+    if (workedHours <= 0 && wd && !absence && !pending) continue
     if (!pending) balance += delta
-    days.push({ date: dateMs, workedHours, targetHours: target, deltaHours: delta, isWorkday: wd, pending })
+    days.push({ date: dateMs, workedHours, targetHours: target, deltaHours: delta, isWorkday: wd, pending, absence })
   }
   return { balanceHours: balance, days }
 }

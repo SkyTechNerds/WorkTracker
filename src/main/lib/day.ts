@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { WTEvent, Segment, DaySummary, UNASSIGNED } from './types'
-import { loadEvents, isMaterialized, loadStoredSegments, dayKey, isDayEnded } from './store'
+import { loadEvents, isMaterialized, loadStoredSegments, dayKey, isDayEnded, getDayAbsence } from './store'
 
 const HOUR = 3600_000
 const MIN = 60_000
@@ -212,7 +212,8 @@ export function summary(dateMs: number, nowMs: number, graceSeconds: number): Da
     workedSeconds: work.reduce((a, s) => a + dur(s), 0) / 1000,
     breakSeconds: breaks.reduce((a, s) => a + dur(s), 0) / 1000,
     segments: segs,
-    materialized: isMaterialized(dateMs)
+    materialized: isMaterialized(dateMs),
+    absence: getDayAbsence(dateMs)
   }
 }
 

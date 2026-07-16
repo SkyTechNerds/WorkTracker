@@ -2,7 +2,8 @@
 
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, Notification, dialog, nativeTheme } from 'electron'
 import path from 'node:path'
-import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegments, resetToAuto, setDayEnded, clearDayEnded, isDayEnded, dayKey } from './lib/store'
+import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegments, resetToAuto, setDayEnded, clearDayEnded, isDayEnded, dayKey, setDayAbsence, clearDayAbsence } from './lib/store'
+import type { AbsenceType } from './lib/types'
 import { Tracker } from './lib/tracker'
 import { TeamsClient } from './lib/teams'
 import { segments as deriveDay } from './lib/day'
@@ -384,6 +385,15 @@ function setupIpc() {
   ipcMain.handle('save-segments', (_e, dateMs: number, segs) => { saveSegments(dateMs, segs); return true })
   ipcMain.handle('is-materialized', (_e, dateMs: number) => isMaterialized(dateMs))
   ipcMain.handle('reset-day', (_e, dateMs: number) => { resetToAuto(dateMs); return true })
+  // Abwesenheit (Krank/Urlaub) für einen Datumsbereich setzen/entfernen. type=null -> entfernen.
+  ipcMain.handle('set-absence', (_e, fromMs: number, toMs: number, type: AbsenceType | null) => {
+    const end = startOfDay(Math.max(fromMs, toMs)); let n = 0
+    for (const d = new Date(startOfDay(Math.min(fromMs, toMs))); d.getTime() <= end; d.setDate(d.getDate() + 1)) {
+      if (type) setDayAbsence(d.getTime(), type); else clearDayAbsence(d.getTime()); n++
+    }
+    refreshTray(); win?.webContents.send('tick'); publishMqtt()
+    return { ok: true, days: n }
+  })
   ipcMain.handle('status', () => ({ status: tracker.status, display: tracker.displayStatus, inCall: tracker.inCall, teamsStatus: teams.status }))
 
   ipcMain.handle('feierabend', () => { endDay(); return true })

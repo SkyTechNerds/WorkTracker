@@ -8,6 +8,7 @@ const api = {
   saveSegments: (dateMs: number, segs: any) => ipcRenderer.invoke('save-segments', dateMs, segs),
   isMaterialized: (dateMs: number) => ipcRenderer.invoke('is-materialized', dateMs),
   resetDay: (dateMs: number) => ipcRenderer.invoke('reset-day', dateMs),
+  setAbsence: (fromMs: number, toMs: number, type: 'krank' | 'urlaub' | null) => ipcRenderer.invoke('set-absence', fromMs, toMs, type),
   status: () => ipcRenderer.invoke('status'),
   feierabend: () => ipcRenderer.invoke('feierabend'),
   resumeWork: () => ipcRenderer.invoke('resume-work'),

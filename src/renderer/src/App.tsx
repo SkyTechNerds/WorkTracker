@@ -10,6 +10,7 @@ declare global {
       saveSegments: (ms: number, s: Seg[]) => Promise<any>
       isMaterialized: (ms: number) => Promise<boolean>
       resetDay: (ms: number) => Promise<any>
+      setAbsence: (fromMs: number, toMs: number, type: 'krank' | 'urlaub' | null) => Promise<{ ok: boolean; days: number }>
       status: () => Promise<any>
       feierabend: () => Promise<any>
       resumeWork: () => Promise<any>
@@ -44,7 +45,7 @@ const UNASSIGNED = 'Nicht zugewiesen'
 const HOUR_H = 80
 
 interface Seg { id: string; start: number; end: number; kind: 'work' | 'break'; ticket?: string | null; note?: string | null; project?: string | null; meeting?: boolean; source: string }
-interface Summary { date: number; start?: number; end?: number; workedSeconds: number; breakSeconds: number; segments: Seg[]; materialized: boolean }
+interface Summary { date: number; start?: number; end?: number; workedSeconds: number; breakSeconds: number; segments: Seg[]; materialized: boolean; absence?: 'krank' | 'urlaub' | null }
 interface Project { id: string; name: string; repoPath: string; gitUserEmail: string; color: string; internal?: boolean }
 
 const PROJECT_COLORS = ['#34c759', '#ff9500', '#ff2d55', '#5ac8fa', '#af52de', '#ffcc00', '#00c7be', '#ff3b30', '#a2845e', '#30b0c7']
@@ -94,7 +95,7 @@ const AI_PROVIDER_LABEL: Record<AiProvider, string> = { gemini: 'Google Gemini',
 interface ApiServerConfig { enabled: boolean; port: number; token: string }
 interface BackupConfig { auto: boolean; onFeierabend: boolean; onNewDay: boolean; intervalHours: number; folder: string; keep: number; lastBackupTs?: number }
 interface ReportConfig { monthly: boolean; folder: string; lastMonth: string }
-interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean; pending?: boolean }
+interface OvertimeDay { date: number; workedHours: number; targetHours: number; deltaHours: number; isWorkday: boolean; pending?: boolean; absence?: 'krank' | 'urlaub' | null }
 interface OvertimeResult { balanceHours: number; days: OvertimeDay[] }
 
 const DEFAULT_CFG: Cfg = {
@@ -167,6 +168,7 @@ function CalendarView() {
   const [exportOpen, setExportOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const [rangeOpen, setRangeOpen] = useState(false)
+  const [absenceOpen, setAbsenceOpen] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiMsg, setAiMsg] = useState('')
   // Hover-Verknüpfung Sidebar <-> Kalender. Pause = eigenes Segment, Arbeit/Meeting = Ticket.
@@ -398,6 +400,10 @@ function CalendarView() {
         <button className="ico" title="Heute" onClick={() => { const d = new Date(); d.setHours(0, 0, 0, 0); setDateMs(d.getTime()) }}><Icon name="today" /></button>
         <button className="ico" title="Nächster Tag" onClick={() => setDateMs(dateMs + 86400000)}><Icon name="chevronR" /></button>
         <b>{new Date(dateMs).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' })}</b>
+        {summary?.absence && <span className={`metric absence-badge ${summary.absence}`} title="Abwesenheit – Soll gewaivt, kein Minus">
+          {summary.absence === 'krank' ? 'Krank' : 'Urlaub'}
+          <button className="ico reset-btn" title="Abwesenheit entfernen" onClick={async () => { await window.wt.setAbsence(dateMs, dateMs, null); load() }}><Icon name="reset" size={13} /></button>
+        </span>}
         {summary?.materialized && <span className="metric edited"><Icon name="pencil" size={13} /> bearbeitet
           <button className="ico reset-btn" title="Auf automatische Erfassung zurücksetzen (manuelle Änderungen verwerfen)"
             onClick={async () => { if (!window.confirm('Diesen Tag auf automatische Erfassung zurücksetzen? Alle manuellen Einträge/Zuweisungen dieses Tages gehen verloren.')) return; await window.wt.resetDay(dateMs); load() }}><Icon name="reset" size={14} /></button></span>}
@@ -417,6 +423,7 @@ function CalendarView() {
         <span className="tb-sep" />
         {cfg.ai?.enabled && <button className="ico" title="KI: Tickets aus Commits zuordnen" disabled={aiBusy} onClick={runAi}>{aiBusy ? <span className="spin"><Icon name="spinner" /></span> : <Icon name="sparkles" />}</button>}
         <button className="ico" title="Ticket auf Zeitraum buchen (Von–Bis, Pausen werden abgezogen)" onClick={() => setRangeOpen(true)}><Icon name="tag" /></button>
+        <button className="ico" title="Krank/Urlaub buchen (Zeitraum) – Soll wird gewaivt, kein Minus" onClick={() => setAbsenceOpen(true)}><Icon name="activity" /></button>
         <button className="ico" title="Einzelnen Eintrag hinzufügen" onClick={() => { const d = new Date(dateMs); d.setHours(9, 0, 0, 0); const e = new Date(dateMs); e.setHours(10, 0, 0, 0); setEditing({ id: uuid(), start: d.getTime(), end: e.getTime(), kind: 'work', source: 'manual' }) }}><Icon name="plus" /></button>
         <span className="export-wrap" onClick={e => e.stopPropagation()}>
           <button className="ico" title="Exportieren" onClick={() => setExportOpen(v => !v)}><Icon name="download" /></button>
@@ -521,6 +528,7 @@ function CalendarView() {
 
       {editing && <BlockEditor seg={editing} projects={cfg.projects} onSave={saveEdit} onDelete={deleteSeg} onCancel={() => setEditing(null)} />}
       {reportOpen && <ReportRange dateMs={dateMs} onClose={() => setReportOpen(false)} />}
+      {absenceOpen && <AbsenceRange dateMs={dateMs} onClose={() => setAbsenceOpen(false)} onDone={load} />}
       {assignKey && <TicketDetail group={assignKey} segments={segments} projects={cfg.projects}
         onAdd={(from, to, note, project) => assignRange(setTime(dateMs, from), setTime(dateMs, to), assignKey === UNASSIGNED ? '' : assignKey, note, project)}
         onDelete={(id) => persist(deleteFilling(id))}
@@ -718,6 +726,37 @@ function ReportRange({ dateMs, onClose }: { dateMs: number; onClose: () => void 
   )
 }
 
+function AbsenceRange({ dateMs, onClose, onDone }: { dateMs: number; onClose: () => void; onDone: () => void }) {
+  const iso = (ms: number) => new Date(ms).toLocaleDateString('sv-SE')
+  const [from, setFrom] = useState(iso(dateMs))
+  const [to, setTo] = useState(iso(dateMs))
+  const [type, setType] = useState<'krank' | 'urlaub'>('krank')
+  const [msg, setMsg] = useState('')
+  const parse = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).getTime() }
+  const apply = async (t: 'krank' | 'urlaub' | null) => {
+    const a = parse(from), b = parse(to)
+    if (b < a) { setMsg('✕ „Bis" liegt vor „Von"'); return }
+    const r = await window.wt.setAbsence(a, b, t)
+    onDone(); if (r.ok) onClose()
+  }
+  return (
+    <Modal title="Krank / Urlaub buchen" onCancel={onClose}>
+      <p className="hint">Markiert die Tage im Zeitraum – das Tagessoll wird gewaivt, die Zeit zählt dann <b>nicht als Minus</b>. Bereits erfasste Arbeit an diesen Tagen bleibt erhalten.</p>
+      <div className="row" style={{ gap: 6, justifyContent: 'flex-start' }}>
+        <button className={type === 'krank' ? 'primary' : ''} onClick={() => setType('krank')}>Krank</button>
+        <button className={type === 'urlaub' ? 'primary' : ''} onClick={() => setType('urlaub')}>Urlaub</button>
+      </div>
+      <div className="grid2"><label>Von <input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>Bis <input type="date" value={to} onChange={e => setTo(e.target.value)} /></label></div>
+      {msg && <p className="hint" style={{ color: 'var(--neg)' }}>{msg}</p>}
+      <div className="actions">
+        <button className="link-danger" onClick={() => apply(null)}>Abwesenheit entfernen</button>
+        <span style={{ flex: 1 }} /><button onClick={onClose}>Abbrechen</button>
+        <button className="primary" onClick={() => apply(type)}>Buchen</button>
+      </div>
+    </Modal>
+  )
+}
+
 function Modal({ title, onCancel, children }: { title: string; onCancel: () => void; children: any }) {
   return (
     <div className="modal-bg" onClick={onCancel}>
@@ -754,12 +793,14 @@ function OvertimeView() {
         <tbody>
           {[...data.days].reverse().map(d => (
             <tr key={d.date} className={`${d.isWorkday ? '' : 'weekend'} ${d.pending ? 'pending' : ''}`}>
-              <td>{new Date(d.date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}{d.pending ? ' · heute' : ''}</td>
+              <td>{new Date(d.date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}{d.pending ? ' · heute' : d.absence ? ` · ${d.absence === 'krank' ? 'Krank' : 'Urlaub'}` : ''}</td>
               <td>{hm(d.workedHours * 3600)}</td>
-              <td>{d.targetHours > 0 ? `${d.targetHours}h` : '–'}</td>
+              <td>{d.absence ? '–' : d.targetHours > 0 ? `${d.targetHours}h` : '–'}</td>
               {d.pending
                 ? <td className="muted">läuft{d.targetHours > 0 && d.workedHours > d.targetHours ? ` (+${hm((d.workedHours - d.targetHours) * 3600)})` : ''}</td>
-                : <td className={d.deltaHours >= 0 ? 'pos' : 'neg'}>{hmSigned(d.deltaHours)}</td>}
+                : d.absence
+                  ? <td className="muted">{d.absence === 'krank' ? 'Krank' : 'Urlaub'}</td>
+                  : <td className={d.deltaHours >= 0 ? 'pos' : 'neg'}>{hmSigned(d.deltaHours)}</td>}
             </tr>
           ))}
           {data.days.length === 0 && <tr><td colSpan={4}>noch keine Daten</td></tr>}
