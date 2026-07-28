@@ -5,7 +5,7 @@ import { segments, ticketTotals, summary } from './day'
 import { isDayEnded, getDayAbsence } from './store'
 import { computeOvertime } from './overtime'
 
-const ABSENCE_LABEL: Record<AbsenceType, string> = { krank: 'Krank', urlaub: 'Urlaub' }
+const ABSENCE_LABEL: Record<AbsenceType, string> = { krank: 'Krank', urlaub: 'Urlaub', fza: 'Freizeitausgleich' }
 
 function hm(seconds: number): string {
   const t = Math.round(seconds); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60)
@@ -119,7 +119,7 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
   // abgeschlossene Tage. Leere planrelevante Tage (Urlaub/krank) NICHT als Minus werten,
   // laufenden Tag (heute, noch kein Feierabend) ausklammern -> kein künstliches −8h.
   let saldoIst = 0, saldoSoll = 0
-  let krankDays = 0, urlaubDays = 0
+  let krankDays = 0, urlaubDays = 0, fzaDays = 0
 
   for (const dd = new Date(first); dd <= last; dd.setDate(dd.getDate() + 1)) {
     const ms = new Date(dd.getFullYear(), dd.getMonth(), dd.getDate()).getTime()
@@ -151,17 +151,18 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
     const pause = cats.pause
     const fill = work + pause
     const hasBooking = fill > 0
-    const absence = future ? null : getDayAbsence(ms) // Krank/Urlaub: Soll gewaivt
-    if (absence === 'krank') krankDays++; else if (absence === 'urlaub') urlaubDays++
+    const absence = future ? null : getDayAbsence(ms) // Krank/Urlaub: Soll gewaivt, FZA: aus dem Konto bezahlt
+    if (absence === 'krank') krankDays++; else if (absence === 'urlaub') urlaubDays++; else if (absence === 'fza') fzaDays++
+    const waived = absence === 'krank' || absence === 'urlaub'
     // Abwesenheitstage: kein offenes Soll, nicht als „unter Soll"/„leer" werten.
     const open = (!weekend && !future && hasBooking && !absence) ? Math.max(0, TARGET - fill) : 0
     totalWork += work; totalPause += pause; totalMeeting += cats.meeting; totalInternal += cats.internal; totalCustomer += cats.customer
     if (hasBooking) { bookedDays++; totalOpen += open; if (!absence) { if (fill >= TARGET) fullDays++; else underDays++ } }
     else if (!weekend && !future && !absence) emptyWorkdays++
-    // Saldo: nur abgeschlossene Tage; laufenden Tag, leere Arbeitstage UND Abwesenheitstage
-    // (Krank/Urlaub sind neutral) überspringen.
+    // Saldo: nur abgeschlossene Tage; laufenden Tag, leere Arbeitstage UND Krank-/Urlaubstage
+    // (die sind neutral) überspringen. FZA-Tage zählen mit vollem Soll -> Abbau wird sichtbar.
     const pending = ms === todayStart.getTime() && !isDayEnded(ms)
-    if (!future && !pending && !absence && !(work <= 0 && !weekend)) {
+    if (!future && !pending && !waived && (absence === 'fza' || !(work <= 0 && !weekend))) {
       const targetSec = weekend ? 0 : TARGET // Wochenendarbeit = reine Überstunde (Soll 0)
       saldoIst += work; saldoSoll += targetSec
     }
@@ -220,6 +221,7 @@ export function buildReport(fromMs: number, toMs: number, nowMs: number, graceSe
   if (totalMeeting >= 60) insights.push({ t: `Meeting-Anteil ${pct(totalMeeting, totalWork)}`, p: `${hm(totalMeeting)} von ${hm(totalWork)} gebuchter Arbeit entfallen auf Meetings.` })
   if (top) insights.push({ t: `Top-Projekt ${esc(top.name)} = ${pct(top.seconds, totalWork)}`, p: `${hm(top.seconds)} – größter Anteil im Zeitraum.` })
   if (krankDays || urlaubDays) insights.push({ t: `${[krankDays && `${krankDays} Krank`, urlaubDays && `${urlaubDays} Urlaub`].filter(Boolean).join(' · ')}`, p: 'Abwesenheitstage – Soll gewaivt, zählen nicht als Minusstunden.' })
+  if (fzaDays) insights.push({ t: `${fzaDays} Tag(e) Freizeitausgleich`, p: `Abgebaut aus dem Überstundenkonto – ${hm(fzaDays * TARGET)} gehen als Minus in den Saldo ein.` })
 
   // ---- Helfer: gestapelter Tagesbalken ----
   const stack = (cats: Record<Cat, number>, open: number, denomBase: number) => {
@@ -315,7 +317,7 @@ h2{margin:0;font-size:22px;letter-spacing:-.03em}.section-head p{margin:4px 0 0;
 .stack,.mini-stack{height:12px;background:#eef2f7;border-radius:999px;overflow:hidden;display:flex;border:1px solid rgba(0,0,0,.04)}
 .mini-stack{height:14px;min-width:200px}
 .seg{display:block;height:100%;flex:0 0 auto}.seg.work{background:var(--work)}.seg.intern{background:var(--intern)}.seg.meetings{background:var(--meetings)}.seg.pause{background:var(--pause)}.seg.open{background:var(--open)}.seg.weekendseg{background:#f1f5f9}.seg.noentry{background:repeating-linear-gradient(45deg,#f8fafc 0,#f8fafc 5px,#edf2f7 5px,#edf2f7 10px)}
-.seg.abs-krank{background:#f9a8d4}.seg.abs-urlaub{background:#7dd3fc}.day.absence{background:#fff}.day.absence.krank{border-color:#f9a8d4}.day.absence.urlaub{border-color:#7dd3fc}.swatch.krank{background:#f9a8d4}.swatch.urlaub{background:#7dd3fc}
+.seg.abs-krank{background:#f9a8d4}.seg.abs-urlaub{background:#7dd3fc}.seg.abs-fza{background:#fcd34d}.day.absence{background:#fff}.day.absence.krank{border-color:#f9a8d4}.day.absence.urlaub{border-color:#7dd3fc}.day.absence.fza{border-color:#fcd34d}.swatch.krank{background:#f9a8d4}.swatch.urlaub{background:#7dd3fc}.swatch.fza{background:#fcd34d}
 .day-total{font-weight:800;font-size:13px}.day-total .over{color:#ea580c;font-style:normal;font-weight:700}.muted{color:#94a3b8;font-weight:600}
 .day-pills{display:flex;flex-wrap:wrap;gap:4px;margin-top:auto}.day-pills span{font-size:10.5px;color:#475467;background:#f2f4f7;border-radius:999px;padding:2px 6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .aside{display:flex;flex-direction:column;gap:12px}.note{border:1px solid var(--line);background:#f8fafc;border-radius:18px;padding:14px}.note h3{margin:0 0 8px;font-size:14px}.note p{margin:0;color:var(--muted)}
@@ -358,7 +360,7 @@ ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px
 </section>
 ${showCalendar ? `<section class="section">
   <div class="section-head"><div><h2>Arbeitsverlauf nach Kalenderlogik</h2><p>Alle Tage des Zeitraums sichtbar. Jeder gebuchte Arbeitstag nutzt ${hm(TARGET)} als Referenz: Kunde + Intern + Meeting + Pause + ggf. nicht gebuchte Sollzeit.</p></div>
-  <div class="legend"><span><i class="swatch work"></i>Kundenprojekt</span><span><i class="swatch intern"></i>Intern</span><span><i class="swatch meetings"></i>Meeting</span><span><i class="swatch pause"></i>Pause</span><span><i class="swatch open"></i>nicht gebuchte Sollzeit</span><span><i class="swatch weekend"></i>Wochenende / keine Buchung</span>${krankDays ? '<span><i class="swatch krank"></i>Krank</span>' : ''}${urlaubDays ? '<span><i class="swatch urlaub"></i>Urlaub</span>' : ''}</div></div>
+  <div class="legend"><span><i class="swatch work"></i>Kundenprojekt</span><span><i class="swatch intern"></i>Intern</span><span><i class="swatch meetings"></i>Meeting</span><span><i class="swatch pause"></i>Pause</span><span><i class="swatch open"></i>nicht gebuchte Sollzeit</span><span><i class="swatch weekend"></i>Wochenende / keine Buchung</span>${krankDays ? '<span><i class="swatch krank"></i>Krank</span>' : ''}${urlaubDays ? '<span><i class="swatch urlaub"></i>Urlaub</span>' : ''}${fzaDays ? '<span><i class="swatch fza"></i>Freizeitausgleich</span>' : ''}</div></div>
   <div class="grid-2">
     <div class="calendar-scroll"><div class="calendar"><div class="weekday">Mo</div><div class="weekday">Di</div><div class="weekday">Mi</div><div class="weekday">Do</div><div class="weekday">Fr</div><div class="weekday">Sa</div><div class="weekday">So</div>${cells.join('')}</div></div>
     <aside class="aside">

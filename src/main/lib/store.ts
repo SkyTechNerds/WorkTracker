@@ -137,7 +137,8 @@ export function dailyDir(): string {
   return path.join(dataDir(), 'daily')
 }
 
-// ---- Abwesenheit (Krank/Urlaub) – waivt das Tagessoll, kein Minus ----
+// ---- Abwesenheit – Krank/Urlaub waiven das Tagessoll (kein Minus),
+//      Freizeitausgleich bezahlt es aus dem Überstundenkonto (Minus) ----
 
 const absenceFile = (d: Date | number) => path.join(dataDir(), 'daily', `${dayKey(d)}.absence`)
 
@@ -150,6 +151,6 @@ export function clearDayAbsence(d: Date | number) {
 export function getDayAbsence(d: Date | number): AbsenceType | null {
   try {
     const t = fs.readFileSync(absenceFile(d), 'utf8').trim()
-    return t === 'krank' || t === 'urlaub' ? t : null
+    return t === 'krank' || t === 'urlaub' || t === 'fza' ? t : null
   } catch { return null }
 }

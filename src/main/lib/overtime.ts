@@ -44,14 +44,18 @@ export function computeOvertime(config: AppConfig, nowMs: number, graceSeconds: 
     const workedHours = s.workedSeconds / 3600
     const wd = isWorkday(d, config.workdayWeekdays)
     const absence = getDayAbsence(dateMs) // Krank/Urlaub: neutraler Tag (Soll gilt als erfüllt)
-    const target = absence ? 0 : (wd ? config.targetHoursPerDay : 0)
-    // Abwesenheit = neutral: weder Minus (kein Soll offen) noch Plus (erfasste Zeit zählt nicht).
-    const delta = absence ? 0 : (workedHours - target)
+    // Freizeitausgleich: das Soll bleibt bestehen und wird aus dem Überstundenkonto
+    // bezahlt -> der Tag zählt wie ein leerer Arbeitstag mit vollem Minus.
+    const waived = absence === 'krank' || absence === 'urlaub'
+    const target = waived ? 0 : (wd ? config.targetHoursPerDay : 0)
+    // Krank/Urlaub = neutral: weder Minus (kein Soll offen) noch Plus (erfasste Zeit zählt nicht).
+    const delta = waived ? 0 : (workedHours - target)
     // Laufender Tag (heute, noch kein Feierabend): NICHT in den Saldo einrechnen,
     // sondern nur als „läuft" anzeigen -> kein -8h am Morgen.
     const pending = dateMs === todayMs && !isDayEnded(dateMs)
     // Leere Arbeitstage ohne Abwesenheits-Markierung nicht als Minus werten (überspringen).
     // Krank-/Urlaubstage NICHT überspringen -> sie erscheinen (mit target 0, delta = geleistet).
+    // FZA-Tage ebenfalls nicht -> sonst fiele genau das Minus weg, das den Abbau abbildet.
     if (workedHours <= 0 && wd && !absence && !pending) continue
     if (!pending) balance += delta
     days.push({ date: dateMs, workedHours, targetHours: target, deltaHours: delta, isWorkday: wd, pending, absence })

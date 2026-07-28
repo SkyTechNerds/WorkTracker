@@ -87,6 +87,7 @@ button, input, select, textarea { font-family: inherit; }
 .topbar .metric.absence-badge { gap: 4px; padding: 2px 4px 2px 9px; border-radius: 999px; font-weight: 600; font-size: 12px; }
 .topbar .metric.absence-badge.krank { background: rgba(249, 168, 212, .22); color: #be185d; }
 .topbar .metric.absence-badge.urlaub { background: rgba(125, 211, 252, .22); color: #0369a1; }
+.topbar .metric.absence-badge.fza { background: rgba(252, 211, 77, .28); color: #a16207; }
 .modal .link-danger { background: none; border: none; padding: 0; font-size: 13px; color: var(--neg); cursor: pointer; }
 .modal .link-danger:hover { text-decoration: underline; }
 .topbar .reset-btn { border: none; background: none; padding: 2px; color: var(--muted); border-radius: 6px; }

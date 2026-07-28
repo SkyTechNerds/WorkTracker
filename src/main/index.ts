@@ -2,7 +2,7 @@
 
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, Notification, dialog, nativeTheme } from 'electron'
 import path from 'node:path'
-import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegments, resetToAuto, setDayEnded, clearDayEnded, isDayEnded, dayKey, setDayAbsence, clearDayAbsence } from './lib/store'
+import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegments, resetToAuto, setDayEnded, clearDayEnded, isDayEnded, dayKey, setDayAbsence, clearDayAbsence, getDayAbsence } from './lib/store'
 import type { AbsenceType } from './lib/types'
 import { Tracker } from './lib/tracker'
 import { TeamsClient } from './lib/teams'
@@ -537,7 +537,9 @@ app.whenReady().then(() => {
     deriveDay: (d) => deriveDay(d, Date.now(), graceSeconds()),
     saveDay: (d, s) => saveSegments(d, s),
     resetDay: (d) => resetToAuto(d),
-    onChange: () => { refreshTray(); win?.webContents.send('tick') }
+    getAbsence: (d) => getDayAbsence(d),
+    setAbsence: (d, t) => { if (t) setDayAbsence(d, t); else clearDayAbsence(d) },
+    onChange: () => { refreshTray(); win?.webContents.send('tick'); publishMqtt() }
   })
 
   teams.on('change', (inMeeting: boolean) => {

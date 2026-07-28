@@ -32,8 +32,9 @@ export interface Segment {
   source: SegmentSource
 }
 
-/** Abwesenheits-Typen (Soll wird gewaivt -> kein Minus). */
-export type AbsenceType = 'krank' | 'urlaub'
+/** Abwesenheits-Typen. krank/urlaub: Soll wird gewaivt -> kein Minus.
+ *  fza (Freizeitausgleich): Soll wird aus dem Überstundenkonto bezahlt -> Minus. */
+export type AbsenceType = 'krank' | 'urlaub' | 'fza'
 
 export interface DaySummary {
   date: number

@@ -9,10 +9,14 @@
 //   POST /api/assign   { date, from:"HH:MM", to:"HH:MM", kind?, ticket?, note?, project?, meeting? }  (to<=from = über Mitternacht)
 //   POST /api/day      { date, segments:[{from|start, to|end, kind?, ticket?, note?, project?, meeting?}] }
 //   POST /api/reset    { date }
+//   GET  /api/absence?date=YYYY-MM-DD
+//   POST /api/absence  { date | from+to, type: "urlaub"|"krank"|"fza"|null }   (null = entfernen)
 
 import http from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { AppConfig, Segment, ApiServerConfig } from './types'
+import { AppConfig, Segment, ApiServerConfig, AbsenceType } from './types'
+
+const ABSENCE_TYPES: AbsenceType[] = ['urlaub', 'krank', 'fza']
 
 export interface ApiContext {
   version: string
@@ -20,6 +24,8 @@ export interface ApiContext {
   deriveDay: (dateMs: number) => Segment[]
   saveDay: (dateMs: number, segs: Segment[]) => void
   resetDay: (dateMs: number) => void
+  getAbsence: (dateMs: number) => AbsenceType | null
+  setAbsence: (dateMs: number, type: AbsenceType | null) => void
   onChange: () => void
 }
 
@@ -38,9 +44,10 @@ function clock(ms: number): string {
   const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function serializeDay(dateMs: number, segs: Segment[]) {
+function serializeDay(dateMs: number, segs: Segment[], absence: AbsenceType | null = null) {
   return {
     date: new Date(dateMs).toLocaleDateString('sv-SE'),
+    absence,
     segments: segs.map(s => ({
       start: s.start, end: s.end, from: clock(s.start), to: clock(s.end),
       kind: s.kind, ticket: s.ticket ?? null, note: s.note ?? null,
@@ -133,7 +140,7 @@ export class ApiServer {
       if (req.method === 'GET' && url.pathname === '/api/day') {
         const d = dayMs(url.searchParams.get('date') || '')
         if (d === null) return this.send(res, 400, { error: 'date=YYYY-MM-DD erforderlich' })
-        return this.send(res, 200, serializeDay(d, this.ctx.deriveDay(d)))
+        return this.send(res, 200, serializeDay(d, this.ctx.deriveDay(d), this.ctx.getAbsence(d)))
       }
       if (req.method === 'POST' && url.pathname === '/api/assign') {
         const b = await this.body(req); if (!b) return this.send(res, 400, { error: 'ungültiges JSON' })
@@ -146,7 +153,7 @@ export class ApiServer {
           note: b.note ?? null, project: b.project ?? null, meeting: !!b.meeting
         })
         this.ctx.saveDay(d, segs); this.ctx.onChange()
-        return this.send(res, 200, serializeDay(d, this.ctx.deriveDay(d)))
+        return this.send(res, 200, serializeDay(d, this.ctx.deriveDay(d), this.ctx.getAbsence(d)))
       }
       if (req.method === 'POST' && url.pathname === '/api/day') {
         const b = await this.body(req); if (!b) return this.send(res, 400, { error: 'ungültiges JSON' })
@@ -166,7 +173,29 @@ export class ApiServer {
           })
         }
         this.ctx.saveDay(d, segs.sort((p, q) => p.start - q.start)); this.ctx.onChange()
-        return this.send(res, 200, serializeDay(d, this.ctx.deriveDay(d)))
+        return this.send(res, 200, serializeDay(d, this.ctx.deriveDay(d), this.ctx.getAbsence(d)))
+      }
+      if (req.method === 'GET' && url.pathname === '/api/absence') {
+        const d = dayMs(url.searchParams.get('date') || '')
+        if (d === null) return this.send(res, 400, { error: 'date=YYYY-MM-DD erforderlich' })
+        return this.send(res, 200, { date: url.searchParams.get('date'), absence: this.ctx.getAbsence(d) })
+      }
+      if (req.method === 'POST' && url.pathname === '/api/absence') {
+        const b = await this.body(req); if (!b) return this.send(res, 400, { error: 'ungültiges JSON' })
+        // Einzeltag (date) oder Zeitraum (from/to). type=null entfernt die Markierung.
+        const a = dayMs(b.date || b.from), z = dayMs(b.date || b.to)
+        if (a === null || z === null) return this.send(res, 400, { error: 'date bzw. from+to als YYYY-MM-DD erforderlich' })
+        const type = b.type ?? null
+        if (type !== null && !ABSENCE_TYPES.includes(type)) {
+          return this.send(res, 400, { error: `type muss ${ABSENCE_TYPES.join('|')} oder null sein` })
+        }
+        const days: string[] = []
+        for (const d = new Date(Math.min(a, z)); d.getTime() <= Math.max(a, z); d.setDate(d.getDate() + 1)) {
+          this.ctx.setAbsence(d.getTime(), type)
+          days.push(new Date(d).toLocaleDateString('sv-SE'))
+        }
+        this.ctx.onChange()
+        return this.send(res, 200, { ok: true, type, days })
       }
       if (req.method === 'POST' && url.pathname === '/api/reset') {
         const b = await this.body(req); if (!b) return this.send(res, 400, { error: 'ungültiges JSON' })
