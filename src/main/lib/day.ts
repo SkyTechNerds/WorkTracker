@@ -175,6 +175,47 @@ function clipOverlaps(segs: Segment[]): Segment[] {
   return out
 }
 
+/** Kuratierte Blöcke fix, der Teil dahinter kommt aus den Roh-Events.
+ *  Die Fortsetzung wird auf GENERISCHE Arbeit reduziert (kein Auto-Ticket/Projekt),
+ *  damit sie sauber mit dem letzten generischen Arbeitsblock verschmilzt ("letzter
+ *  Eintrag wächst") statt als separater kleiner Block aufzutauchen. Echte Pausen
+ *  (Idle/Sperren) bleiben erhalten. */
+function withTail(dateMs: number, nowMs: number, graceSeconds: number, stored: Segment[]): Segment[] {
+  const cutoff = stored.reduce((m, s) => Math.max(m, s.end), startOfDay(dateMs))
+  const tail: Segment[] = []
+  for (const s of deriveSegments(dateMs, nowMs, graceSeconds)) {
+    if (s.end <= cutoff) continue
+    const seg: Segment = { ...s, start: Math.max(s.start, cutoff) }
+    if (seg.kind === 'work') { seg.ticket = null; seg.note = null; seg.project = null; seg.meeting = undefined }
+    tail.push(seg)
+  }
+  return clipOverlaps(coalesce([...stored, ...tail]))
+}
+
+/** Mindestlänge, ab der ein fehlender Rest nachgetragen wird (Sekunden-Schnipsel
+ *  zwischen letztem Block und Lock-Event sind kein „vergessener Feierabend"). */
+const TAIL_MIN = MIN
+
+/** Ein Tag wird schon durch beiläufige Aktionen materialisiert (Meeting-Popup, Block
+ *  bearbeiten, KI-Zuordnung) – eingefroren auf den Stand *dieses Moments*. Solange er
+ *  „heute" ist, wächst er über withTail() weiter; ab Mitternacht liefert segments() nur
+ *  noch das Gespeicherte, und alles danach Gearbeitete fiele weg, wenn kein Feierabend
+ *  kam. Liefert den vervollständigten Stand – oder null, wenn nichts fehlt.
+ *  Ein per Feierabend beendeter oder nachträglich bearbeiteter Tag (beide setzen die
+ *  .ended-Markierung) bleibt unangetastet: dort ist das Ende eine Entscheidung. */
+export function missingTail(dateMs: number, nowMs: number, graceSeconds: number): Segment[] | null {
+  if (isToday(dateMs) || isDayEnded(dateMs) || !isMaterialized(dateMs)) return null
+  const stored = loadStoredSegments(dateMs)
+  if (!stored?.length) return null
+  // Nur unberührte Mitschnitte nachziehen. Sobald ein Block von Hand stammt, hat jemand
+  // auf den Tag geschaut — dann ist auch sein Ende gewollt (typisch: glatt auf 17:00
+  // gesetzter Feierabend) und kein abgebrochener Mitschnitt.
+  if (stored.some(s => s.source !== 'auto')) return null
+  const merged = withTail(dateMs, nowMs, graceSeconds, stored)
+  const end = (segs: Segment[]) => segs.reduce((m, s) => Math.max(m, s.end), 0)
+  return end(merged) > end(stored) + TAIL_MIN ? merged : null
+}
+
 export function segments(dateMs: number, nowMs: number, graceSeconds: number): Segment[] {
   if (isMaterialized(dateMs)) {
     const stored = loadStoredSegments(dateMs)
@@ -182,19 +223,7 @@ export function segments(dateMs: number, nowMs: number, graceSeconds: number): S
       // Vergangene Tage ODER Feierabend (Tag beendet): exakt das Gespeicherte (statisch).
       if (!isToday(dateMs) || isDayEnded(dateMs)) return clipOverlaps(coalesce(stored))
       // HEUTE: kuratierte Blöcke fix, aber der laufende Teil wächst weiter.
-      // Die Live-Fortsetzung wird auf GENERISCHE Arbeit reduziert (kein
-      // Auto-Ticket/Projekt), damit sie sauber mit dem letzten generischen
-      // Arbeitsblock verschmilzt ("letzter Eintrag wächst") statt als separater
-      // kleiner Block aufzutauchen. Echte Pausen (Idle/Sperren) bleiben erhalten.
-      const cutoff = stored.reduce((m, s) => Math.max(m, s.end), startOfDay(dateMs))
-      const tail: Segment[] = []
-      for (const s of deriveSegments(dateMs, nowMs, graceSeconds)) {
-        if (s.end <= cutoff) continue
-        const seg: Segment = { ...s, start: Math.max(s.start, cutoff) }
-        if (seg.kind === 'work') { seg.ticket = null; seg.note = null; seg.project = null; seg.meeting = undefined }
-        tail.push(seg)
-      }
-      return clipOverlaps(coalesce([...stored, ...tail]))
+      return withTail(dateMs, nowMs, graceSeconds, stored)
     }
   }
   return clipOverlaps(coalesce(deriveSegments(dateMs, nowMs, graceSeconds)))

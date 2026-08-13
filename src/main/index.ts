@@ -6,7 +6,7 @@ import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegment
 import type { AbsenceType } from './lib/types'
 import { Tracker } from './lib/tracker'
 import { TeamsClient } from './lib/teams'
-import { segments as deriveDay } from './lib/day'
+import { segments as deriveDay, missingTail } from './lib/day'
 import { gitEmails } from './lib/git'
 import { checkForUpdate } from './lib/updater'
 import { computeOvertime, weekWorkedSeconds } from './lib/overtime'
@@ -267,6 +267,43 @@ function endDay() {
   if (config.backup?.onFeierabend) runAutoBackup(true) // Tag abgeschlossen -> sichern
 }
 
+/** Vergangene Tage, die nie einen Feierabend bekommen haben, aus den Roh-Events
+ *  vervollständigen und festschreiben. Nötig, weil ein Tag schon durch beiläufige
+ *  Aktionen (Meeting-Popup, Block bearbeiten) eingefroren wird: bis Mitternacht wächst
+ *  er noch mit, danach zählt nur noch das Gespeicherte — der Rest des Abends wäre weg.
+ *  Läuft beim Start und stündlich; ein einmal nachgezogener Tag ist beendet und wird
+ *  nicht wieder angefasst.
+ *  Bewusst nur wenige Tage zurück: weiter zurück liegende Tage sind in der Regel schon
+ *  abgerechnet, und ein glatt gesetzter Feierabend („17:00") ließe sich nicht mehr von
+ *  einem abgebrochenen Mitschnitt unterscheiden. Ältere Lücken lieber von Hand ansehen. */
+function finalizePendingDays(backDays = 3) {
+  const today = startOfDay(Date.now())
+  const fixed: string[] = []
+  for (let i = 1; i <= backDays; i++) {
+    const d = startOfDay(today - i * 86400_000) // über die Zeitumstellung hinweg korrekt
+    const merged = missingTail(d, Date.now(), graceSeconds())
+    if (!merged) continue
+    const before = loadStoredSegments(d) ?? []
+    const plus = Math.round((merged.reduce((m, s) => Math.max(m, s.end), 0)
+      - before.reduce((m, s) => Math.max(m, s.end), 0)) / 60_000)
+    saveSegments(d, merged)
+    setDayEnded(d)
+    fixed.push(`${dayKey(d)} (+${plus} min)`)
+    win?.webContents.send('tick')
+  }
+  // Nie stillschweigend: die Zeit wandert von hier aus weiter nach clockodo.
+  if (fixed.length) notify('Vergessener Feierabend ergänzt', `${fixed.join(', ')} — aus den Roh-Events nachgetragen.`)
+}
+
+/** Bewusste Bearbeitung eines Tages (UI-Editor, API/MCP-Buchung). Bei einem
+ *  vergangenen Tag ist der letzte Block damit eine Entscheidung und kein abgebrochener
+ *  Mitschnitt -> als beendet markieren, sonst würde finalizePendingDays() später einen
+ *  gekürzten Abend wieder auffüllen. */
+function saveDayEdited(dateMs: number, segs: Parameters<typeof saveSegments>[1]) {
+  saveSegments(dateMs, segs)
+  if (startOfDay(dateMs) < startOfDay(Date.now())) setDayEnded(dateMs)
+}
+
 /** Arbeit fortsetzen: Feierabend-Marker entfernen, Live-Erfassung wieder an. */
 function resumeDay() {
   clearDayEnded(startOfDay(Date.now()))
@@ -382,7 +419,7 @@ function setupIpc() {
     return tracker.daySummary(dateMs)
   })
   ipcMain.handle('get-segments', (_e, dateMs: number) => deriveDay(dateMs, Date.now(), graceSeconds()))
-  ipcMain.handle('save-segments', (_e, dateMs: number, segs) => { saveSegments(dateMs, segs); return true })
+  ipcMain.handle('save-segments', (_e, dateMs: number, segs) => { saveDayEdited(dateMs, segs); return true })
   ipcMain.handle('is-materialized', (_e, dateMs: number) => isMaterialized(dateMs))
   ipcMain.handle('reset-day', (_e, dateMs: number) => { resetToAuto(dateMs); return true })
   // Abwesenheit (Krank/Urlaub) für einen Datumsbereich setzen/entfernen. type=null -> entfernen.
@@ -535,7 +572,7 @@ app.whenReady().then(() => {
     version: app.getVersion(),
     getConfig: () => config,
     deriveDay: (d) => deriveDay(d, Date.now(), graceSeconds()),
-    saveDay: (d, s) => saveSegments(d, s),
+    saveDay: (d, s) => saveDayEdited(d, s),
     resetDay: (d) => resetToAuto(d),
     getAbsence: (d) => getDayAbsence(d),
     setAbsence: (d, t) => { if (t) setDayAbsence(d, t); else clearDayAbsence(d) },
@@ -588,6 +625,8 @@ app.whenReady().then(() => {
   applyBackupTimer()
   setTimeout(() => maybeMonthlyReport(), 5000) // Monatswechsel beim Start prüfen
   setInterval(() => maybeMonthlyReport(), 6 * 3600_000) // + alle 6h (falls App lange läuft)
+  finalizePendingDays() // vergessene Feierabende nachziehen (auch rückwirkend)
+  setInterval(() => finalizePendingDays(), 3600_000) // + stündlich, deckt den Tageswechsel ab
   // Kein Name gesetzt? -> beim Start danach fragen (für den Monatsbericht).
   if (!config.employeeName?.trim()) setTimeout(() => openPopup('name', {}), 2500)
 
