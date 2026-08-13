@@ -1,6 +1,6 @@
 {
   "name": "worktracker",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "description": "Cross-platform Arbeitszeit-Tracker (Mac + Windows)",
   "main": "./out/main/index.js",
   "author": "SkyTechNerds",
