@@ -13,6 +13,9 @@ export type Status = 'active' | 'paused' | 'off'
 /** Ein 'suspend' innerhalb dieser Spanne nach dem Aufwachen/Entsperren gilt als
  *  Geister-Event (macOS-Wake-Sequenz) und wird ignoriert. */
 const WAKE_SUSPEND_GRACE_MS = 15_000
+/** Start-Prompt höchstens einmal je Spanne — 'resume' und 'unlock-screen' kommen
+ *  beim Aufwachen kurz nacheinander, und das Popup soll nicht doppelt aufgehen. */
+const PROMPT_REPEAT_MS = 60_000
 
 export class Tracker extends EventEmitter {
   private config: AppConfig
@@ -34,6 +37,7 @@ export class Tracker extends EventEmitter {
   private sessionDayKey = ''                               // Tag, an dem die Sitzung gestartet wurde
   private lastActivationTs = 0     // letzter active-Zeitpunkt (für Rückgängig via Popup)
   private lastWakeTs = 0           // letztes Entsperren/Aufwachen (gegen Sleep-Geister-Events)
+  private lastPromptTs = 0         // letzter Start-Prompt (Drossel gegen Doppel-Popups)
   private evalTimer?: NodeJS.Timeout
   private sampleTimer?: NodeJS.Timeout
   private graceSeconds: number
@@ -89,7 +93,17 @@ export class Tracker extends EventEmitter {
     this.emit('update')
     // Beim (Login-)Start in der Arbeitszeit zum Start auffordern, wenn keine Sitzung
     // läuft — beim Auto-Launch kommt nicht zwingend ein 'unlock'-Event.
-    if (!this.working && !this.inCall && this.withinWorkWindow()) this.emit('promptStart')
+    this.maybePromptStart()
+  }
+
+  /** Zum Start auffordern, wenn keine Sitzung läuft und wir im Arbeitsfenster sind.
+   *  Gedrosselt, weil macOS beim Aufwachen 'resume' UND 'unlock-screen' liefert. */
+  private maybePromptStart() {
+    if (this.working || this.inCall || !this.withinWorkWindow()) return
+    const now = Date.now()
+    if (now - this.lastPromptTs < PROMPT_REPEAT_MS) return
+    this.lastPromptTs = now
+    this.emit('promptStart')
   }
 
   stop() {
@@ -108,15 +122,19 @@ export class Tracker extends EventEmitter {
   }
 
   private setLocked(v: boolean) {
+    // Beim Entsperren/Aufwachen in der Arbeitszeit proaktiv zum Start auffordern, wenn
+    // keine Sitzung läuft (Auto-Start gibt es nicht mehr). Außerhalb des Fensters / am
+    // Wochenende KEIN Popup — dann bleibt es einfach privat/ungezählt.
+    // Das passiert VOR der Zustandsprüfung: Ein Sekunden-Wake vor Arbeitsbeginn
+    // (Netzteil einstecken, Notification-Wake) hatte das Flag schon auf „entsperrt"
+    // gesetzt, und das echte Entsperren danach kam dann ohne Prompt durch — der ganze
+    // Vormittag blieb unerfasst.
+    if (!v) this.maybePromptStart()
     if (this.screenLocked === v) return
     this.screenLocked = v
     this.log({ ts: Date.now(), type: v ? 'lock' : 'unlock' })
     this.evaluate(v ? 'lock' : 'unlock')
     this.emit('update')
-    // Beim Entsperren in der Arbeitszeit proaktiv zum Start auffordern, wenn keine
-    // Sitzung läuft (Auto-Start gibt es nicht mehr). Außerhalb des Fensters / am
-    // Wochenende KEIN Popup — dann bleibt es einfach privat/ungezählt.
-    if (!v && !this.working && !this.inCall && this.withinWorkWindow()) this.emit('promptStart')
   }
 
   private dayKey(d = Date.now()) { return new Date(d).toLocaleDateString('sv-SE') }
