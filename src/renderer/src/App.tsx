@@ -81,20 +81,18 @@ interface MqttConfig {
   enabled: boolean; host: string; port: number; username: string; password: string
   baseTopic: string; retain: boolean; haDiscovery: boolean; publish: MqttPublishFlags
 }
-type AiProvider = 'gemini' | 'openai' | 'minimax'
+type AiProvider = 'gemini' | 'openai'
 interface AiConfig { enabled: boolean; provider: AiProvider; apiKey: string; model: string }
-const AI_DEFAULT_MODEL: Record<AiProvider, string> = { gemini: 'gemini-2.5-flash', openai: 'gpt-4o-mini', minimax: 'MiniMax-Text-01' }
+const AI_DEFAULT_MODEL: Record<AiProvider, string> = { gemini: 'gemini-2.5-flash', openai: 'gpt-4o-mini' }
 const AI_MODELS: Record<AiProvider, string[]> = {
   gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-001'],
-  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'o4-mini'],
-  minimax: ['MiniMax-Text-01', 'MiniMax-M1']
+  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1', 'o4-mini']
 }
 const AI_KEY_URL: Record<AiProvider, string> = {
   gemini: 'https://aistudio.google.com/app/apikey',
-  openai: 'https://platform.openai.com/api-keys',
-  minimax: 'https://www.minimax.io/platform'
+  openai: 'https://platform.openai.com/api-keys'
 }
-const AI_PROVIDER_LABEL: Record<AiProvider, string> = { gemini: 'Google Gemini', openai: 'OpenAI', minimax: 'MiniMax' }
+const AI_PROVIDER_LABEL: Record<AiProvider, string> = { gemini: 'Google Gemini', openai: 'OpenAI' }
 interface ApiServerConfig { enabled: boolean; port: number; token: string }
 interface BackupConfig { auto: boolean; onFeierabend: boolean; onNewDay: boolean; intervalHours: number; folder: string; keep: number; lastBackupTs?: number }
 interface ReportConfig { monthly: boolean; folder: string; lastMonth: string }
@@ -1017,7 +1015,6 @@ function AiSection({ ai, onChange }: { ai: AiConfig; onChange: (a: AiConfig) => 
           <select value={ai.provider} onChange={e => setProvider(e.target.value as AiProvider)}>
             <option value="gemini">Google Gemini</option>
             <option value="openai">OpenAI</option>
-            <option value="minimax">MiniMax</option>
           </select>
         </label>
         <label className="row">API-Key <input type="password" value={ai.apiKey} onChange={e => set('apiKey', e.target.value)} placeholder="hier einfügen" /></label>

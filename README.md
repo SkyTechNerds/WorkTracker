@@ -52,7 +52,7 @@ sich manuell wie per API/KI nachpflegen.
 ### KI-Ticket-Zuordnung
 - Ordnet Arbeitsblöcken anhand der **Git-Commits des Tages** automatisch Ticket, Projekt und
   eine Kurzbeschreibung zu (zeitliche Nähe).
-- Anbieter **Gemini / OpenAI / MiniMax**, Modell-Auswahl (lädt verfügbare Modelle), API-Key,
+- Anbieter **Gemini / OpenAI**, Modell-Auswahl (lädt verfügbare Modelle), API-Key,
   Verbindungstest. ✨-Button erscheint nur bei aktivierter KI.
 
 ### Teams-Meeting-Erkennung
