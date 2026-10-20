@@ -30,9 +30,8 @@ async function callLLM(cfg: AiConfig, system: string, user: string): Promise<str
     if (!res.ok) throw new Error(j?.error?.message || `HTTP ${res.status}`)
     return j?.candidates?.[0]?.content?.parts?.[0]?.text || ''
   }
-  // OpenAI-kompatibel (OpenAI, MiniMax)
-  const base = cfg.provider === 'minimax' ? 'https://api.minimax.io/v1' : 'https://api.openai.com/v1'
-  const res = await fetch(`${base}/chat/completions`, {
+  // OpenAI
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
     body: JSON.stringify({
@@ -60,8 +59,7 @@ export async function listModels(cfg: AiConfig): Promise<{ models: string[]; err
         .filter((n: string) => n.includes('gemini'))
       return { models: models.sort().reverse() }
     }
-    const base = cfg.provider === 'minimax' ? 'https://api.minimax.io/v1' : 'https://api.openai.com/v1'
-    const res = await fetch(`${base}/models`, { headers: { Authorization: `Bearer ${cfg.apiKey}` } })
+    const res = await fetch('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${cfg.apiKey}` } })
     const j: any = await res.json()
     if (!res.ok) throw new Error(j?.error?.message || `HTTP ${res.status}`)
     let models: string[] = (j.data || []).map((m: any) => m.id).filter(Boolean)

@@ -4,7 +4,7 @@
 import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { AppConfig, WTEvent, Segment, AbsenceType, defaultConfig, PROJECT_COLORS } from './types'
+import { AppConfig, WTEvent, Segment, AbsenceType, defaultConfig, defaultAiConfig, PROJECT_COLORS } from './types'
 
 /** Eine Palettenfarbe, die noch nicht vergeben ist (sonst zufällig). */
 function freeColor(used: string[]): string {
@@ -49,6 +49,12 @@ export function loadConfig(): AppConfig {
       const color = freeColor(used); used.push(color); changed = true
       return { ...p, color }
     })
+    // MiniMax wurde als KI-Anbieter entfernt: alte Einstellung auf Gemini zurücksetzen.
+    // Der MiniMax-Key passt dort nicht, also KI aus, bis ein Gemini-/OpenAI-Key eingetragen ist.
+    if ((cfg.ai?.provider as string) === 'minimax') {
+      cfg.ai = { ...defaultAiConfig() }
+      changed = true
+    }
     if (changed) saveConfig(cfg)
     return cfg
   } catch {

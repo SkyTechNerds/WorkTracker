@@ -117,7 +117,7 @@ export function defaultApiServerConfig(): ApiServerConfig {
   return { enabled: false, port: 8787, token: '' }
 }
 
-export type AiProvider = 'gemini' | 'openai' | 'minimax'
+export type AiProvider = 'gemini' | 'openai'
 
 export interface AiConfig {
   enabled: boolean
@@ -128,14 +128,12 @@ export interface AiConfig {
 
 export const AI_DEFAULT_MODEL: Record<AiProvider, string> = {
   gemini: 'gemini-2.5-flash',
-  openai: 'gpt-4o-mini',
-  minimax: 'MiniMax-Text-01'
+  openai: 'gpt-4o-mini'
 }
 
 export const AI_KEY_URL: Record<AiProvider, string> = {
   gemini: 'https://aistudio.google.com/app/apikey',
-  openai: 'https://platform.openai.com/api-keys',
-  minimax: 'https://www.minimax.io/platform'
+  openai: 'https://platform.openai.com/api-keys'
 }
 
 export function defaultAiConfig(): AiConfig {
