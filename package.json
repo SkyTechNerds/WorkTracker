@@ -6,13 +6,14 @@
   "author": "SkyTechNerds",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "npm run build:native && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
-    "package": "electron-vite build && electron-builder",
-    "package:mac": "electron-vite build && electron-builder --mac",
-    "package:win": "electron-vite build && electron-builder --win",
-    "package:all": "electron-vite build && electron-builder --mac --win"
+    "package": "npm run build:native && electron-vite build && electron-builder",
+    "package:mac": "npm run build:native && electron-vite build && electron-builder --mac",
+    "package:win": "npm run build:native && electron-vite build && electron-builder --win",
+    "package:all": "npm run build:native && electron-vite build && electron-builder --mac --win",
+    "build:native": "node native/build.cjs"
   },
   "build": {
     "appId": "com.skytechnerds.worktracker",
@@ -45,7 +46,13 @@
       "identity": null,
       "extendInfo": {
         "LSUIElement": true
-      }
+      },
+      "extraResources": [
+        {
+          "from": "resources/mic-users",
+          "to": "mic-users"
+        }
+      ]
     },
     "dmg": {
       "title": "WorkTracker ${version}"
