@@ -55,11 +55,18 @@ sich manuell wie per API/KI nachpflegen.
 - Anbieter **Gemini / OpenAI**, Modell-Auswahl (lädt verfügbare Modelle), API-Key,
   Verbindungstest. ✨-Button erscheint nur bei aktivierter KI.
 
-### Teams-Meeting-Erkennung
-- Erkennt laufende Teams-Calls über die **lokale Drittanbieter-API** (WebSocket
-  `127.0.0.1:8124`). Nach spontanem Call optional Abfrage von **Titel + Kunde/Projekt**
-  (manuell, für die Abrechnung); „war kein Meeting" zählt als normale Arbeit. Hinweis,
-  falls die Teams-API nicht erreichbar ist.
+### Call- und Meeting-Erkennung
+Zwei Quellen, verknüpft per ODER: ein Call endet erst, wenn keine mehr „im Call" meldet.
+- **Teams-API:** Erkennt laufende Teams-Calls über die **lokale Drittanbieter-API** (WebSocket
+  `127.0.0.1:8124`). Hinweis, falls die Teams-API nicht erreichbar ist.
+- **Mikrofon pro App (macOS 14+):** Der Helfer `mic-users` (`native/mic-users.swift`) fragt über
+  die CoreAudio-Prozessobjekte ab, **welche** Apps gerade das Mikrofon benutzen. Ein Call liegt vor,
+  wenn eine App aus der Liste dabei ist (Teams, Zoom, Webex, Slack, FaceTime, Browser; in den
+  Einstellungen als Bundle-ID-Präfixe änderbar). Programme, die den Eingang dauerhaft offen halten
+  (z. B. Adobe Premiere), zählen nicht. An nach 5 s, aus nach 20 s. Braucht keine
+  Mikrofon-Berechtigung. Erkennt auch Calls, wenn die Teams-API aus ist.
+- Nach spontanem Call optional Abfrage von **Titel + Kunde/Projekt** (manuell, für die
+  Abrechnung); „war kein Meeting" zählt als normale Arbeit.
 
 ### MQTT / Home Assistant
 - Sendet **Status, Im-Call, Gearbeitet heute/Woche, Pause, Überstunden,
@@ -103,10 +110,15 @@ src/main/            Electron-Hauptprozess
   lib/day.ts         Ableitung der Tages-Segmente aus Roh-Events
   lib/store.ts       Persistenz (Config, Events JSONL, Overrides, Feierabend-Marker)
   lib/teams.ts       Teams-WebSocket   lib/mqtt.ts  MQTT/HA   lib/ai.ts  KI
+  lib/micWatch.ts    Call-Erkennung über Mikrofon pro App (ruft resources/mic-users)
   lib/apiServer.ts   lokale HTTP-API   lib/git.ts   Git-Probe   lib/updater.ts
 src/preload/         contextBridge-API (window.wt)
 src/renderer/        React-UI (Kalender, Überstunden, Einstellungen, Popup)
+native/              mic-users.swift (macOS-Helfer), build.cjs baut ihn nach resources/
 ```
+
+`npm run build` baut den Helfer vorher mit `swiftc` (nur auf macOS, braucht die Xcode
+Command Line Tools); electron-builder legt ihn als `Contents/Resources/mic-users` ins Paket.
 
 Daten liegen unter dem Electron-`userData`-Pfad
 (`~/Library/Application Support/worktracker` bzw. `%APPDATA%\worktracker`).

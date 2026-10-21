@@ -1,3 +1,4 @@
+import { DEFAULT_MIC_CALL_APPS } from './micDefaults'
 // Gemeinsame Datentypen (portiert aus der Swift-Version).
 
 export type EventType =
@@ -60,6 +61,9 @@ export interface AppConfig {
   promptAfterBreakMinutes: number
   endDayOnSleep: boolean
   detectTeamsApi: boolean
+  // Call-Erkennung über das Mikrofon pro App (macOS 14+, siehe micWatch.ts)
+  detectMicApps: boolean
+  micCallApps: string[]
   askMeetingTitle: boolean
   launchAtLogin: boolean
   // Mitarbeiter-/Nutzername (erscheint im Monatsbericht + Dateiname)
@@ -191,6 +195,8 @@ export function defaultConfig(): AppConfig {
     promptAfterBreakMinutes: 20,
     endDayOnSleep: true,
     detectTeamsApi: false,
+    detectMicApps: true,
+    micCallApps: [...DEFAULT_MIC_CALL_APPS],
     askMeetingTitle: true,
     launchAtLogin: true,
     employeeName: '',

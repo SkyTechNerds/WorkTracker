@@ -6,6 +6,7 @@ import { loadConfig, saveConfig, isMaterialized, loadStoredSegments, saveSegment
 import type { AbsenceType } from './lib/types'
 import { Tracker } from './lib/tracker'
 import { TeamsClient } from './lib/teams'
+import { MicWatch } from './lib/micWatch'
 import { segments as deriveDay, missingTail } from './lib/day'
 import { gitEmails } from './lib/git'
 import { checkForUpdate } from './lib/updater'
@@ -48,6 +49,10 @@ let win: BrowserWindow | null = null
 let popup: BrowserWindow | null = null
 let tracker: Tracker
 let teams: TeamsClient
+let mic: MicWatch
+// Call-Quellen: Teams-API und Mikrofon pro App. Call = mindestens eine meldet „im Call".
+let teamsInCall = false
+let micInCall = false
 let mqtt: MqttPublisher
 let apiServer: ApiServer
 let config: AppConfig
@@ -409,6 +414,7 @@ function setupIpc() {
   ipcMain.handle('save-config', (_e, c: AppConfig) => {
     config = c; saveConfig(c); tracker.setConfig(c)
     if (c.detectTeamsApi) teams.start(); else teams.stop()
+    if (c.detectMicApps) mic.start(c.micCallApps); else mic.stop()
     applyLaunchAtLogin(c.launchAtLogin)
     mqtt.configure(c.mqtt); publishMqtt()
     applyApiServer()
@@ -431,7 +437,7 @@ function setupIpc() {
     refreshTray(); win?.webContents.send('tick'); publishMqtt()
     return { ok: true, days: n }
   })
-  ipcMain.handle('status', () => ({ status: tracker.status, display: tracker.displayStatus, inCall: tracker.inCall, teamsStatus: teams.status }))
+  ipcMain.handle('status', () => ({ status: tracker.status, display: tracker.displayStatus, inCall: tracker.inCall, teamsStatus: teams.status, micStatus: mic.status, micApp: mic.app }))
 
   ipcMain.handle('feierabend', () => { endDay(); return true })
   ipcMain.handle('resume-work', () => { resumeDay(); return true })
@@ -567,6 +573,7 @@ app.whenReady().then(() => {
   config = loadConfig()
   tracker = new Tracker(config)
   teams = new TeamsClient(app.getVersion())
+  mic = new MicWatch()
   mqtt = new MqttPublisher(app.getVersion())
   apiServer = new ApiServer({
     version: app.getVersion(),
@@ -579,7 +586,10 @@ app.whenReady().then(() => {
     onChange: () => { refreshTray(); win?.webContents.send('tick'); publishMqtt() }
   })
 
-  teams.on('change', (inMeeting: boolean) => {
+  // Beide Quellen laufen über dieselbe Auswertung; ein Call endet erst, wenn keine mehr meldet.
+  const onCallSource = () => {
+    const inMeeting = teamsInCall || micInCall
+    if (inMeeting === tracker.inCall) return
     tracker.setMeeting(inMeeting ? 'Meeting' : null)
     if (inMeeting) {
       callStart = Date.now()
@@ -592,7 +602,9 @@ app.whenReady().then(() => {
       }
     }
     refreshTray()
-  })
+  }
+  teams.on('change', (v: boolean) => { teamsInCall = v; onCallSource() })
+  mic.on('change', (v: boolean) => { micInCall = v; onCallSource() })
   tracker.on('activated', ({ reason, breakSeconds }: { reason: string; breakSeconds: number }) => {
     maybePrompt(reason, breakSeconds)
     // Neuer Arbeitstag begonnen -> letzten abgeschlossenen Tag sichern, ABER nicht,
@@ -620,6 +632,7 @@ app.whenReady().then(() => {
   if (isDayEnded(startOfDay(Date.now()))) tracker.restoreFeierabend() // Feierabend überlebt Neustart
   tracker.start()
   if (config.detectTeamsApi) teams.start()
+  if (config.detectMicApps) mic.start(config.micCallApps)
   if (config.mqtt?.enabled) mqtt.configure(config.mqtt)
   applyApiServer()
   applyBackupTimer()

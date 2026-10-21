@@ -63,7 +63,7 @@ interface Cfg {
   idleThresholdMinutes: number; sampleIntervalSeconds: number; breakCapMinutes: number
   workdayStartHour: number; workdayEndHour: number; roundingMinutes: number
   promptMode: 'off' | 'onceADay' | 'afterBreaks' | 'everyUnlock'; promptAfterBreakMinutes: number
-  endDayOnSleep: boolean; detectTeamsApi: boolean; askMeetingTitle: boolean; launchAtLogin: boolean
+  endDayOnSleep: boolean; detectTeamsApi: boolean; detectMicApps: boolean; micCallApps: string[]; askMeetingTitle: boolean; launchAtLogin: boolean
   employeeName: string
   targetHoursPerDay: number; workdayWeekdays: number[]; overtimeStartBalanceHours: number; dailyLimitHours: number
   projects: Project[]
@@ -103,7 +103,7 @@ const DEFAULT_CFG: Cfg = {
   idleThresholdMinutes: 6, sampleIntervalSeconds: 60, breakCapMinutes: 30,
   workdayStartHour: 6, workdayEndHour: 20, roundingMinutes: 15,
   promptMode: 'afterBreaks', promptAfterBreakMinutes: 20,
-  endDayOnSleep: true, detectTeamsApi: false, askMeetingTitle: true, launchAtLogin: true,
+  endDayOnSleep: true, detectTeamsApi: false, detectMicApps: true, micCallApps: [], askMeetingTitle: true, launchAtLogin: true,
   employeeName: '',
   targetHoursPerDay: 8, workdayWeekdays: [2, 3, 4, 5, 6], overtimeStartBalanceHours: 0, dailyLimitHours: 10,
   projects: [],
@@ -881,8 +881,14 @@ function SettingsView() {
             <section>
               <h3>Meetings</h3>
               {toggle('detectTeamsApi', 'Teams-Meetings automatisch erkennen')}
-              {toggle('askMeetingTitle', 'Nach spontanem Call nach Titel fragen')}
               {cfg.detectTeamsApi && <p className="hint">Teams → Einstellungen → Datenschutz → Drittanbieter-API aktivieren.</p>}
+              {toggle('detectMicApps', 'Calls am Mikrofon erkennen (Teams, Zoom, Webex, Browser …)')}
+              {cfg.detectMicApps && <>
+                <p className="hint">Zählt nur, wenn eine dieser Apps das Mikrofon benutzt – andere Programme, die den Eingang offen halten, zählen nicht. Eine Bundle-ID (oder deren Anfang) pro Zeile. Nur macOS 14+.</p>
+                <textarea rows={6} value={(cfg.micCallApps || []).join('\n')}
+                  onChange={e => set('micCallApps', e.target.value.split('\n').map(x => x.trim()).filter(Boolean))} />
+              </>}
+              {toggle('askMeetingTitle', 'Nach spontanem Call nach Titel fragen')}
             </section>
           )}
 

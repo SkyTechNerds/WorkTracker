@@ -252,7 +252,7 @@ export class Tracker extends EventEmitter {
     this.log({
       ts: Date.now(), type: 'sample',
       repo: proj?.name, branch: proj?.branch ?? undefined, ticket: proj?.ticket ?? undefined,
-      call: this.config.detectTeamsApi ? (this.callLabel ?? undefined) : undefined
+      call: (this.config.detectTeamsApi || this.config.detectMicApps) ? (this.callLabel ?? undefined) : undefined
     })
   }
 

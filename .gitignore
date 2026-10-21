@@ -5,3 +5,6 @@ build/icon.iconset/
 *.log
 .DS_Store
 .env
+
+# gebauter macOS-Helfer (npm run build:native)
+resources/mic-users
