@@ -170,7 +170,12 @@ function clipOverlaps(segs: Segment[]): Segment[] {
   for (const s0 of [...segs].sort((a, b) => a.start - b.start)) {
     const s = { ...s0 }
     if (lastEnd !== null && s.start < lastEnd) s.start = lastEnd
-    if (s.end > s.start) { out.push(s); lastEnd = s.end }
+    // 0-Minuten-Blöcke verwerfen: Start und Ende in derselben Anzeige-Minute.
+    // Sub-Minuten active->inactive-Flips (Feierabend/Standby/App-Neustart am
+    // Tagesende) erscheinen sonst als Block mit from==to. Heilt auch bereits
+    // gespeicherte Tage beim Lesen.
+    const sameMinute = Math.floor(s.start / MIN) === Math.floor(s.end / MIN)
+    if (s.end > s.start && !sameMinute) { out.push(s); lastEnd = s.end }
   }
   return out
 }
